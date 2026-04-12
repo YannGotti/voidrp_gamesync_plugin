@@ -1,6 +1,7 @@
 package ru.voidrp.gamesync.config;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -12,30 +13,117 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import ru.voidrp.gamesync.model.GameNationListResponse;
+import ru.voidrp.gamesync.model.GameNationSnapshot;
 import ru.voidrp.gamesync.model.NationDefinition;
+import ru.voidrp.gamesync.service.BackendClient;
 import ru.voidrp.gamesync.util.NameNormalizer;
 
 public final class NationRegistry {
 
+    private final JavaPlugin plugin;
+    private final BackendClient backendClient;
+    private final GameSyncConfig config;
     private final Map<String, NationDefinition> nations = new TreeMap<>();
+    private String source = "empty";
 
-    public NationRegistry(JavaPlugin plugin) {
-        File file = new File(plugin.getDataFolder(), "nations.yml");
-        YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
+    public NationRegistry(JavaPlugin plugin, BackendClient backendClient, GameSyncConfig config) {
+        this.plugin = plugin;
+        this.backendClient = backendClient;
+        this.config = config;
+        refresh();
+    }
 
-        ConfigurationSection root = yaml.getConfigurationSection("nations");
-        if (root == null) {
+    public synchronized void refresh() {
+        Map<String, NationDefinition> loaded = new TreeMap<>();
+
+        if (config.isBackendNationSourceEnabled()) {
+            try {
+                GameNationListResponse response = backendClient.fetchNationDefinitions();
+                if (response != null && response.items != null && !response.items.isEmpty()) {
+                    for (GameNationSnapshot snapshot : response.items) {
+                        NationDefinition def = fromSnapshot(snapshot);
+                        if (def != null) loaded.put(def.slug(), def);
+                    }
+                    if (!loaded.isEmpty()) {
+                        nations.clear();
+                        nations.putAll(loaded);
+                        source = "backend";
+                        plugin.getLogger().info("NationRegistry loaded " + nations.size() + " nations from backend.");
+                        return;
+                    }
+                }
+            } catch (IOException | InterruptedException exception) {
+                plugin.getLogger().warning("Failed to load nations from backend: " + exception.getMessage());
+            } catch (Exception exception) {
+                plugin.getLogger().warning("Unexpected backend nation load error: " + exception.getMessage());
+            }
+        }
+
+        if (config.isFallbackYmlEnabled()) {
+            loaded = loadFromYaml();
+            nations.clear();
+            nations.putAll(loaded);
+            source = "yml";
+            plugin.getLogger().info("NationRegistry loaded " + nations.size() + " nations from fallback nations.yml.");
             return;
         }
 
+        nations.clear();
+        source = "empty";
+        plugin.getLogger().warning("NationRegistry is empty: backend load failed and fallback yml disabled.");
+    }
+
+    public synchronized List<NationDefinition> all() { return new ArrayList<>(nations.values()); }
+
+    public synchronized NationDefinition get(String slug) {
+        if (slug == null) return null;
+        return nations.get(slug.toLowerCase(Locale.ROOT));
+    }
+
+    public synchronized NationDefinition findByPlayer(String minecraftNickname) {
+        if (minecraftNickname == null || minecraftNickname.isBlank()) return null;
+        for (NationDefinition definition : nations.values()) {
+            if (definition.contains(minecraftNickname)) return definition;
+        }
+        return null;
+    }
+
+    public synchronized String getSource() { return source; }
+
+    private NationDefinition fromSnapshot(GameNationSnapshot snapshot) {
+        if (snapshot == null || snapshot.nation_slug == null || snapshot.nation_slug.isBlank()) return null;
+        String leader = normalizeOrNull(snapshot.leader_minecraft_nickname);
+        List<String> officers = normalizeList(snapshot.officers);
+        List<String> members = normalizeList(snapshot.members);
+        String tag = snapshot.tag == null || snapshot.tag.isBlank() ? snapshot.title : snapshot.tag;
+
+        return new NationDefinition(
+            snapshot.nation_slug.toLowerCase(Locale.ROOT),
+            snapshot.title == null || snapshot.title.isBlank() ? snapshot.nation_slug : snapshot.title,
+            tag,
+            leader,
+            officers,
+            members,
+            0, 0, 0, 0
+        );
+    }
+
+    private Map<String, NationDefinition> loadFromYaml() {
+        File file = new File(plugin.getDataFolder(), "nations.yml");
+        YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
+
+        Map<String, NationDefinition> loaded = new TreeMap<>();
+        ConfigurationSection root = yaml.getConfigurationSection("nations");
+        if (root == null) return loaded;
+
         for (String slugKey : root.getKeys(false)) {
             ConfigurationSection nationSection = root.getConfigurationSection(slugKey);
-            if (nationSection == null) {
-                continue;
-            }
+            if (nationSection == null) continue;
 
             String slug = slugKey.toLowerCase(Locale.ROOT);
             String title = nationSection.getString("title", slug);
+            String tag = nationSection.getString("tag", title);
             String leader = normalizeOrNull(nationSection.getString("leader"));
             List<String> officers = normalizeList(nationSection.getStringList("officers"));
             List<String> members = normalizeList(nationSection.getStringList("members"));
@@ -46,48 +134,25 @@ public final class NationRegistry {
             int prestigeBonus = nationSection.getInt("manual.prestige-bonus", 0);
 
             NationDefinition definition = new NationDefinition(
-                slug,
-                title,
-                leader,
-                officers,
-                members,
-                territoryPoints,
-                bossKills,
-                eventsCompleted,
-                prestigeBonus
+                slug, title, tag, leader, officers, members,
+                territoryPoints, bossKills, eventsCompleted, prestigeBonus
             );
-            nations.put(slug, definition);
+            loaded.put(slug, definition);
         }
-    }
 
-    public List<NationDefinition> all() {
-        return new ArrayList<>(nations.values());
-    }
-
-    public NationDefinition get(String slug) {
-        if (slug == null) {
-            return null;
-        }
-        return nations.get(slug.toLowerCase(Locale.ROOT));
+        return loaded;
     }
 
     private String normalizeOrNull(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
+        if (value == null || value.isBlank()) return null;
         return NameNormalizer.normalizeMinecraftName(value);
     }
 
     private List<String> normalizeList(List<String> values) {
-        if (values == null || values.isEmpty()) {
-            return Collections.emptyList();
-        }
-
+        if (values == null || values.isEmpty()) return Collections.emptyList();
         List<String> result = new ArrayList<>();
         for (String value : values) {
-            if (value == null || value.isBlank()) {
-                continue;
-            }
+            if (value == null || value.isBlank()) continue;
             result.add(NameNormalizer.normalizeMinecraftName(value));
         }
         return result;

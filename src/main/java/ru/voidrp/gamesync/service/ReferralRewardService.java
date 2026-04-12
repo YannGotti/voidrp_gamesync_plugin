@@ -1,7 +1,6 @@
 package ru.voidrp.gamesync.service;
 
 import java.io.IOException;
-import java.time.Instant;
 import java.util.List;
 
 import org.bukkit.Bukkit;
@@ -63,9 +62,7 @@ public final class ReferralRewardService {
     }
 
     public void applyReward(Player player, ReferralResolveResponse response) {
-        if (response == null || response.reward == null) {
-            return;
-        }
+        if (response == null || response.reward == null) return;
 
         List<String> commands = config.getRewardCommands(response.reward.reward_bundle_key);
         Bukkit.getScheduler().runTask(plugin, () -> {

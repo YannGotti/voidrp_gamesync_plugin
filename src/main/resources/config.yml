@@ -1,9 +1,13 @@
 backend:
   base-url: "https://api.void-rp.ru"
   api-prefix: "/api/v1"
-  game-auth-secret: "CHANGE_ME"
+  game-auth-secret: "AAEfal24AG2rwgwOTsL9HefSbp_8TpZZy6A"
   connect-timeout-ms: 10000
   read-timeout-ms: 20000
+
+nation-source:
+  backend-enabled: true
+  fallback-yml-enabled: true
 
 sync:
   enabled: true
@@ -12,26 +16,53 @@ sync:
   sync-stats: true
   stats-online-only: true
 
+territory:
+  source: "worldguard"
+  worldguard:
+    count-mode: "2d"
+    fallback_to_manual: true
+
 referrals:
   resolve-on-join: true
   join-delay-ticks: 60
   auto-apply-on-join: true
   suppress-duplicate-reward-until-expiry: true
 
+luckperms:
+  enabled: true
+  apply-on-join: true
+  reconcile-after-sync: true
+  server-context: ""
+  prefix:
+    enabled: true
+    priority: 25
+    template: "&8[&b%tag%&8]&r "
+  suffix:
+    enabled: true
+    priority: 25
+    template: " &8• &7%role%"
+  role-labels:
+    leader: "Лидер"
+    officer: "Офицер"
+    member: "Участник"
+
 reward-bundles:
   referral_rank_3:
     commands:
       - "lp user %player% permission set referral.rank_3 true 30d"
       - "eco give %player% 5000"
+      - "minecraft:give %player% golden_apple 4"
   referral_rank_2:
     commands:
       - "lp user %player% permission set referral.rank_2 true 30d"
       - "eco give %player% 15000"
+      - "minecraft:give %player% diamond 16"
       - "crate key give %player% referral 2"
   referral_rank_1:
     commands:
       - "lp user %player% permission set referral.rank_1 true 30d"
       - "eco give %player% 50000"
+      - "minecraft:give %player% netherite_ingot 4"
       - "crate key give %player% referral 5"
       - "lp user %player% parent addtemp referralvip 30d"
 

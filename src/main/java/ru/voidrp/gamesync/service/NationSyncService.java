@@ -24,14 +24,16 @@ public final class NationSyncService {
     private final PluginDataStore dataStore;
     private final Economy economy;
     private final GameSyncConfig config;
+    private final TerritoryPointsResolver territoryPointsResolver;
 
     public NationSyncService(
-            JavaPlugin plugin,
-            BackendClient backendClient,
-            NationRegistry registry,
-            PluginDataStore dataStore,
-            Economy economy,
-            GameSyncConfig config
+        JavaPlugin plugin,
+        BackendClient backendClient,
+        NationRegistry registry,
+        PluginDataStore dataStore,
+        Economy economy,
+        GameSyncConfig config,
+        TerritoryPointsResolver territoryPointsResolver
     ) {
         this.plugin = plugin;
         this.backendClient = backendClient;
@@ -39,9 +41,11 @@ public final class NationSyncService {
         this.dataStore = dataStore;
         this.economy = economy;
         this.config = config;
+        this.territoryPointsResolver = territoryPointsResolver;
     }
 
     public void syncAll() {
+        registry.refresh();
         for (NationDefinition nation : registry.all()) {
             syncNation(nation.slug());
         }
@@ -50,7 +54,7 @@ public final class NationSyncService {
     public void syncNation(String slug) {
         NationDefinition definition = registry.get(slug);
         if (definition == null) {
-            plugin.getLogger().warning("Nation not found in nations.yml: " + slug);
+            plugin.getLogger().warning("Nation not found in registry: " + slug);
             return;
         }
 
@@ -83,7 +87,6 @@ public final class NationSyncService {
         int pvpKills = 0;
         int mobKills = 0;
         int deaths = 0;
-
         long blocksPlaced = 0L;
         long blocksBroken = 0L;
 
@@ -96,7 +99,6 @@ public final class NationSyncService {
                 try {
                     treasury += economy.getBalance(offlinePlayer);
                 } catch (Throwable ignored) {
-                    // ignore economy provider edge cases
                 }
             }
 
@@ -105,37 +107,19 @@ public final class NationSyncService {
                 continue;
             }
 
-            try {
-                playtimeMinutes += onlinePlayer.getStatistic(Statistic.PLAY_ONE_MINUTE) / (20 * 60);
-            } catch (Exception ignored) {
-            }
-
-            try {
-                pvpKills += onlinePlayer.getStatistic(Statistic.PLAYER_KILLS);
-            } catch (Exception ignored) {
-            }
-
-            try {
-                mobKills += onlinePlayer.getStatistic(Statistic.MOB_KILLS);
-            } catch (Exception ignored) {
-            }
-
-            try {
-                deaths += onlinePlayer.getStatistic(Statistic.DEATHS);
-            } catch (Exception ignored) {
-            }
-
-            // USE_ITEM и MINE_BLOCK требуют дополнительный параметр Material.
-            // Пока оставляем 0, чтобы sync не падал.
+            try { playtimeMinutes += onlinePlayer.getStatistic(Statistic.PLAY_ONE_MINUTE) / (20 * 60); } catch (Exception ignored) {}
+            try { pvpKills += onlinePlayer.getStatistic(Statistic.PLAYER_KILLS); } catch (Exception ignored) {}
+            try { mobKills += onlinePlayer.getStatistic(Statistic.MOB_KILLS); } catch (Exception ignored) {}
+            try { deaths += onlinePlayer.getStatistic(Statistic.DEATHS); } catch (Exception ignored) {}
         }
 
-        int territoryPoints = definition.territoryPoints() + dataStore.getNationOverride(definition.slug(), "territory");
+        int territoryPoints = territoryPointsResolver.resolve(definition);
         int bossKills = definition.bossKills() + dataStore.getNationOverride(definition.slug(), "bosskills");
         int eventsCompleted = definition.eventsCompleted() + dataStore.getNationOverride(definition.slug(), "events");
         int prestigeBonus = definition.prestigeBonus() + dataStore.getNationOverride(definition.slug(), "prestige");
 
         int prestigeScore = (int) Math.round(
-                treasury * 0.002
+            treasury * 0.002
                 + territoryPoints * 15
                 + playtimeMinutes * 0.05
                 + pvpKills * 8
@@ -146,18 +130,18 @@ public final class NationSyncService {
         );
 
         return new NationStatsPayload(
-                definition.slug(),
-                round2(treasury),
-                territoryPoints,
-                playtimeMinutes,
-                pvpKills,
-                mobKills,
-                bossKills,
-                deaths,
-                blocksPlaced,
-                blocksBroken,
-                eventsCompleted,
-                prestigeScore
+            definition.slug(),
+            round2(treasury),
+            territoryPoints,
+            playtimeMinutes,
+            pvpKills,
+            mobKills,
+            bossKills,
+            deaths,
+            blocksPlaced,
+            blocksBroken,
+            eventsCompleted,
+            prestigeScore
         );
     }
 

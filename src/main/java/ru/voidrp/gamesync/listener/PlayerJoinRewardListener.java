@@ -16,14 +16,20 @@ public final class PlayerJoinRewardListener implements Listener {
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
-        if (!plugin.getGameSyncConfig().isResolveOnJoin()) {
-            return;
+        if (plugin.getGameSyncConfig().isResolveOnJoin()) {
+            plugin.getServer().getScheduler().runTaskLaterAsynchronously(
+                plugin,
+                () -> plugin.getReferralRewardService().resolveAndMaybeApply(event.getPlayer(), false),
+                plugin.getGameSyncConfig().getJoinDelayTicks()
+            );
         }
 
-        plugin.getServer().getScheduler().runTaskLaterAsynchronously(
-            plugin,
-            () -> plugin.getReferralRewardService().resolveAndMaybeApply(event.getPlayer(), false),
-            plugin.getGameSyncConfig().getJoinDelayTicks()
-        );
+        if (plugin.getGameSyncConfig().isApplyNationMetaOnJoin()) {
+            plugin.getServer().getScheduler().runTaskLater(
+                plugin,
+                () -> plugin.getLuckPermsNationMetaService().applyForPlayer(event.getPlayer()),
+                Math.max(20L, plugin.getGameSyncConfig().getJoinDelayTicks())
+            );
+        }
     }
 }

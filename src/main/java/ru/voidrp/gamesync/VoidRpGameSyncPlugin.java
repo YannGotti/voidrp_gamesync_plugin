@@ -10,10 +10,12 @@ import ru.voidrp.gamesync.config.GameSyncConfig;
 import ru.voidrp.gamesync.config.NationRegistry;
 import ru.voidrp.gamesync.listener.PlayerJoinRewardListener;
 import ru.voidrp.gamesync.service.BackendClient;
+import ru.voidrp.gamesync.service.LuckPermsNationMetaService;
 import ru.voidrp.gamesync.service.NationSyncService;
 import ru.voidrp.gamesync.service.ReferralRewardService;
 import ru.voidrp.gamesync.service.RewardCacheService;
 import ru.voidrp.gamesync.service.SyncScheduler;
+import ru.voidrp.gamesync.service.TerritoryPointsResolver;
 import ru.voidrp.gamesync.store.PluginDataStore;
 
 public final class VoidRpGameSyncPlugin extends JavaPlugin {
@@ -22,9 +24,11 @@ public final class VoidRpGameSyncPlugin extends JavaPlugin {
     private NationRegistry nationRegistry;
     private PluginDataStore dataStore;
     private BackendClient backendClient;
+    private TerritoryPointsResolver territoryPointsResolver;
     private NationSyncService nationSyncService;
     private RewardCacheService rewardCacheService;
     private ReferralRewardService referralRewardService;
+    private LuckPermsNationMetaService luckPermsNationMetaService;
     private SyncScheduler syncScheduler;
     private Economy economy;
 
@@ -33,7 +37,6 @@ public final class VoidRpGameSyncPlugin extends JavaPlugin {
         saveDefaultConfig();
         saveResourceIfMissing("nations.yml");
         saveResourceIfMissing("data.yml");
-
         this.economy = setupEconomy();
         reloadPluginState();
 
@@ -68,13 +71,15 @@ public final class VoidRpGameSyncPlugin extends JavaPlugin {
         reloadConfig();
 
         this.gameSyncConfig = new GameSyncConfig(this);
-        this.nationRegistry = new NationRegistry(this);
         this.dataStore = new PluginDataStore(this);
         this.backendClient = new BackendClient(this, gameSyncConfig);
+        this.nationRegistry = new NationRegistry(this, backendClient, gameSyncConfig);
+        this.territoryPointsResolver = new TerritoryPointsResolver(this, dataStore, gameSyncConfig);
         this.rewardCacheService = new RewardCacheService(this, dataStore);
         this.referralRewardService = new ReferralRewardService(this, backendClient, rewardCacheService, gameSyncConfig);
-        this.nationSyncService = new NationSyncService(this, backendClient, nationRegistry, dataStore, economy, gameSyncConfig);
-        this.syncScheduler = new SyncScheduler(this, nationSyncService, gameSyncConfig);
+        this.nationSyncService = new NationSyncService(this, backendClient, nationRegistry, dataStore, economy, gameSyncConfig, territoryPointsResolver);
+        this.luckPermsNationMetaService = new LuckPermsNationMetaService(this, nationRegistry, dataStore, gameSyncConfig);
+        this.syncScheduler = new SyncScheduler(this, nationSyncService, luckPermsNationMetaService, gameSyncConfig);
     }
 
     private void saveResourceIfMissing(String path) {
@@ -103,39 +108,15 @@ public final class VoidRpGameSyncPlugin extends JavaPlugin {
         return rsp.getProvider();
     }
 
-    public GameSyncConfig getGameSyncConfig() {
-        return gameSyncConfig;
-    }
-
-    public NationRegistry getNationRegistry() {
-        return nationRegistry;
-    }
-
-    public PluginDataStore getDataStore() {
-        return dataStore;
-    }
-
-    public BackendClient getBackendClient() {
-        return backendClient;
-    }
-
-    public NationSyncService getNationSyncService() {
-        return nationSyncService;
-    }
-
-    public RewardCacheService getRewardCacheService() {
-        return rewardCacheService;
-    }
-
-    public ReferralRewardService getReferralRewardService() {
-        return referralRewardService;
-    }
-
-    public SyncScheduler getSyncScheduler() {
-        return syncScheduler;
-    }
-
-    public Economy getEconomy() {
-        return economy;
-    }
+    public GameSyncConfig getGameSyncConfig() { return gameSyncConfig; }
+    public NationRegistry getNationRegistry() { return nationRegistry; }
+    public PluginDataStore getDataStore() { return dataStore; }
+    public BackendClient getBackendClient() { return backendClient; }
+    public TerritoryPointsResolver getTerritoryPointsResolver() { return territoryPointsResolver; }
+    public NationSyncService getNationSyncService() { return nationSyncService; }
+    public RewardCacheService getRewardCacheService() { return rewardCacheService; }
+    public ReferralRewardService getReferralRewardService() { return referralRewardService; }
+    public LuckPermsNationMetaService getLuckPermsNationMetaService() { return luckPermsNationMetaService; }
+    public SyncScheduler getSyncScheduler() { return syncScheduler; }
+    public Economy getEconomy() { return economy; }
 }

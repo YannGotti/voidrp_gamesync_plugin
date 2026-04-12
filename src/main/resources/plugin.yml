@@ -3,7 +3,7 @@ version: ${version}
 main: ru.voidrp.gamesync.VoidRpGameSyncPlugin
 api-version: '1.21'
 authors: [VoidRP]
-softdepend: [Vault]
+softdepend: [Vault, LuckPerms, PlaceholderAPI, WorldGuard]
 commands:
   vrgs:
     description: VoidRP game sync admin command

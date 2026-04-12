@@ -22,13 +22,8 @@ public final class RewardCacheService {
         String storedBundle = dataStore.getRewardBundle(playerId);
         String storedExpires = dataStore.getRewardExpiresAt(playerId);
 
-        if (storedBundle == null || storedExpires == null) {
-            return false;
-        }
-
-        if (!storedBundle.equalsIgnoreCase(bundleKey)) {
-            return false;
-        }
+        if (storedBundle == null || storedExpires == null) return false;
+        if (!storedBundle.equalsIgnoreCase(bundleKey)) return false;
 
         try {
             Instant stored = Instant.parse(storedExpires);

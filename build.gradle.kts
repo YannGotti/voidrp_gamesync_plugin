@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "ru.voidrp"
-version = "1.0.0"
+version = "1.2.1"
 
 java {
     toolchain.languageVersion.set(JavaLanguageVersion.of(21))
@@ -13,6 +13,9 @@ java {
 repositories {
     mavenCentral()
     maven("https://repo.papermc.io/repository/maven-public/")
+    maven("https://repo.enginehub.org/repo/")
+    maven("https://repo.extendedclip.com/content/repositories/placeholderapi/")
+    maven("https://repo.lucko.me/")
     maven("https://jitpack.io")
     maven("https://repo.opencollab.dev/main/")
 }
@@ -20,6 +23,11 @@ repositories {
 dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT")
     compileOnly("com.github.MilkBowl:VaultAPI:1.7")
+    compileOnly("net.luckperms:api:5.5")
+    compileOnly("me.clip:placeholderapi:2.11.6")
+
+    compileOnly("com.sk89q.worldguard:worldguard-bukkit:7.0.10")
+    compileOnly("com.sk89q.worldedit:worldedit-bukkit:7.3.0")
 
     implementation("com.google.code.gson:gson:2.11.0")
 }
@@ -28,11 +36,7 @@ tasks {
     processResources {
         filteringCharset = "UTF-8"
         filesMatching("plugin.yml") {
-            expand(
-                mapOf(
-                    "version" to project.version
-                )
-            )
+            expand(mapOf("version" to project.version))
         }
     }
 

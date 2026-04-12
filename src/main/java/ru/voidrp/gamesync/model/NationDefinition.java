@@ -8,6 +8,7 @@ import java.util.Set;
 public record NationDefinition(
     String slug,
     String title,
+    String tag,
     String leader,
     List<String> officers,
     List<String> members,
@@ -24,5 +25,29 @@ public record NationDefinition(
         all.addAll(officers);
         all.addAll(members);
         return new ArrayList<>(all);
+    }
+
+    public String roleFor(String minecraftNickname) {
+        if (minecraftNickname == null || minecraftNickname.isBlank()) {
+            return null;
+        }
+        if (leader != null && leader.equalsIgnoreCase(minecraftNickname)) {
+            return "leader";
+        }
+        for (String officer : officers) {
+            if (officer.equalsIgnoreCase(minecraftNickname)) {
+                return "officer";
+            }
+        }
+        for (String member : members) {
+            if (member.equalsIgnoreCase(minecraftNickname)) {
+                return "member";
+            }
+        }
+        return null;
+    }
+
+    public boolean contains(String minecraftNickname) {
+        return roleFor(minecraftNickname) != null;
     }
 }

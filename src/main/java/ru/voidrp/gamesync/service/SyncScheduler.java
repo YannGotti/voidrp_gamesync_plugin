@@ -10,12 +10,19 @@ public final class SyncScheduler {
 
     private final JavaPlugin plugin;
     private final NationSyncService nationSyncService;
+    private final LuckPermsNationMetaService nationMetaService;
     private final GameSyncConfig config;
     private BukkitTask task;
 
-    public SyncScheduler(JavaPlugin plugin, NationSyncService nationSyncService, GameSyncConfig config) {
+    public SyncScheduler(
+        JavaPlugin plugin,
+        NationSyncService nationSyncService,
+        LuckPermsNationMetaService nationMetaService,
+        GameSyncConfig config
+    ) {
         this.plugin = plugin;
         this.nationSyncService = nationSyncService;
+        this.nationMetaService = nationMetaService;
         this.config = config;
     }
 
@@ -29,7 +36,12 @@ public final class SyncScheduler {
 
         this.task = Bukkit.getScheduler().runTaskTimerAsynchronously(
             plugin,
-            nationSyncService::syncAll,
+            () -> {
+                nationSyncService.syncAll();
+                if (config.isReconcileNationMetaAfterSync()) {
+                    Bukkit.getScheduler().runTask(plugin, nationMetaService::reconcileOnlinePlayers);
+                }
+            },
             100L,
             config.getSyncPeriodTicks()
         );

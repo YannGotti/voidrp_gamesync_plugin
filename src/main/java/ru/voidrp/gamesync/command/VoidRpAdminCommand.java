@@ -14,7 +14,6 @@ import org.bukkit.entity.Player;
 
 import ru.voidrp.gamesync.VoidRpGameSyncPlugin;
 import ru.voidrp.gamesync.model.NationDefinition;
-import ru.voidrp.gamesync.model.ReferralResolveResponse;
 
 public final class VoidRpAdminCommand implements CommandExecutor, TabCompleter {
 
@@ -54,6 +53,14 @@ public final class VoidRpAdminCommand implements CommandExecutor, TabCompleter {
             }
             case "nation" -> {
                 handleNation(sender, args);
+                return true;
+            }
+            case "meta" -> {
+                handleMeta(sender, args);
+                return true;
+            }
+            case "nations" -> {
+                handleNations(sender, args);
                 return true;
             }
             default -> {
@@ -103,7 +110,6 @@ public final class VoidRpAdminCommand implements CommandExecutor, TabCompleter {
         }
 
         String mode = args[1].toLowerCase(Locale.ROOT);
-
         if (mode.equals("resolve")) {
             plugin.getReferralRewardService().resolveAndMaybeApply(target, false);
             sender.sendMessage("§aЗапущен resolve reward для §f" + target.getName());
@@ -146,11 +152,56 @@ public final class VoidRpAdminCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§aOverride сохранён: §f" + slug + " / " + key + " = " + value);
     }
 
+    private void handleMeta(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage("§eИспользование: /vrgs meta <apply|reconcile> [player]");
+            return;
+        }
+
+        String mode = args[1].toLowerCase(Locale.ROOT);
+
+        if (mode.equals("reconcile")) {
+            Bukkit.getScheduler().runTask(plugin, () -> plugin.getLuckPermsNationMetaService().reconcileOnlinePlayers());
+            sender.sendMessage("§aЗапущен reconcile LuckPerms meta для онлайн игроков.");
+            return;
+        }
+
+        if (mode.equals("apply")) {
+            if (args.length < 3) {
+                sender.sendMessage("§eИспользование: /vrgs meta apply <player>");
+                return;
+            }
+            Player target = Bukkit.getPlayerExact(args[2]);
+            if (target == null) {
+                sender.sendMessage("§cИгрок не найден онлайн: " + args[2]);
+                return;
+            }
+            Bukkit.getScheduler().runTask(plugin, () -> plugin.getLuckPermsNationMetaService().applyForPlayer(target));
+            sender.sendMessage("§aЗапущено обновление nation meta для §f" + target.getName());
+            return;
+        }
+
+        sender.sendMessage("§cНеизвестный режим meta.");
+    }
+
+    private void handleNations(CommandSender sender, String[] args) {
+        if (args.length < 2 || !args[1].equalsIgnoreCase("refresh")) {
+            sender.sendMessage("§eИспользование: /vrgs nations refresh");
+            return;
+        }
+
+        plugin.getNationRegistry().refresh();
+        sender.sendMessage("§aNation registry refreshed. Source: §f" + plugin.getNationRegistry().getSource());
+    }
+
     private void sendHelp(CommandSender sender) {
         sender.sendMessage("§6VoidRpGameSync commands:");
         sender.sendMessage("§e/vrgs reload");
         sender.sendMessage("§e/vrgs sync all");
         sender.sendMessage("§e/vrgs sync nation <slug>");
+        sender.sendMessage("§e/vrgs nations refresh");
+        sender.sendMessage("§e/vrgs meta reconcile");
+        sender.sendMessage("§e/vrgs meta apply <player>");
         sender.sendMessage("§e/vrgs reward resolve <player>");
         sender.sendMessage("§e/vrgs reward apply <player>");
         sender.sendMessage("§e/vrgs nation set <slug> <territory|bosskills|events|prestige> <value>");
@@ -158,12 +209,10 @@ public final class VoidRpAdminCommand implements CommandExecutor, TabCompleter {
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        if (!sender.hasPermission("voidrp.gamesync.admin")) {
-            return List.of();
-        }
+        if (!sender.hasPermission("voidrp.gamesync.admin")) return List.of();
 
         if (args.length == 1) {
-            return filter(args[0], List.of("reload", "sync", "reward", "nation"));
+            return filter(args[0], List.of("reload", "sync", "reward", "nation", "meta", "nations"));
         }
 
         if (args.length == 2 && args[0].equalsIgnoreCase("sync")) {
@@ -172,9 +221,7 @@ public final class VoidRpAdminCommand implements CommandExecutor, TabCompleter {
 
         if (args.length == 3 && args[0].equalsIgnoreCase("sync") && args[1].equalsIgnoreCase("nation")) {
             List<String> slugs = new ArrayList<>();
-            for (NationDefinition def : plugin.getNationRegistry().all()) {
-                slugs.add(def.slug());
-            }
+            for (NationDefinition def : plugin.getNationRegistry().all()) slugs.add(def.slug());
             return filter(args[2], slugs);
         }
 
@@ -184,10 +231,22 @@ public final class VoidRpAdminCommand implements CommandExecutor, TabCompleter {
 
         if (args.length == 3 && args[0].equalsIgnoreCase("reward")) {
             List<String> names = new ArrayList<>();
-            for (Player player : Bukkit.getOnlinePlayers()) {
-                names.add(player.getName());
-            }
+            for (Player player : Bukkit.getOnlinePlayers()) names.add(player.getName());
             return filter(args[2], names);
+        }
+
+        if (args.length == 2 && args[0].equalsIgnoreCase("meta")) {
+            return filter(args[1], List.of("apply", "reconcile"));
+        }
+
+        if (args.length == 3 && args[0].equalsIgnoreCase("meta") && args[1].equalsIgnoreCase("apply")) {
+            List<String> names = new ArrayList<>();
+            for (Player player : Bukkit.getOnlinePlayers()) names.add(player.getName());
+            return filter(args[2], names);
+        }
+
+        if (args.length == 2 && args[0].equalsIgnoreCase("nations")) {
+            return filter(args[1], List.of("refresh"));
         }
 
         if (args.length == 2 && args[0].equalsIgnoreCase("nation")) {
@@ -196,9 +255,7 @@ public final class VoidRpAdminCommand implements CommandExecutor, TabCompleter {
 
         if (args.length == 3 && args[0].equalsIgnoreCase("nation") && args[1].equalsIgnoreCase("set")) {
             List<String> slugs = new ArrayList<>();
-            for (NationDefinition def : plugin.getNationRegistry().all()) {
-                slugs.add(def.slug());
-            }
+            for (NationDefinition def : plugin.getNationRegistry().all()) slugs.add(def.slug());
             return filter(args[2], slugs);
         }
 

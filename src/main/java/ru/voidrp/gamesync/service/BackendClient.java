@@ -15,6 +15,7 @@ import com.google.gson.GsonBuilder;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import ru.voidrp.gamesync.config.GameSyncConfig;
+import ru.voidrp.gamesync.model.GameNationListResponse;
 import ru.voidrp.gamesync.model.NationDefinition;
 import ru.voidrp.gamesync.model.NationStatsPayload;
 import ru.voidrp.gamesync.model.ReferralResolveResponse;
@@ -33,6 +34,28 @@ public final class BackendClient {
             .connectTimeout(Duration.ofMillis(config.getConnectTimeoutMs()))
             .build();
         this.gson = new GsonBuilder().create();
+    }
+
+    public GameNationListResponse fetchNationDefinitions() throws IOException, InterruptedException {
+        String url = apiUrl("/game-sync/nations");
+
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+            .timeout(Duration.ofMillis(config.getReadTimeoutMs()))
+            .header("X-Game-Auth-Secret", config.getGameAuthSecret())
+            .GET()
+            .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (config.isDebugHttp()) {
+            plugin.getLogger().info("[HTTP] GET " + url + " -> " + response.statusCode() + " body=" + response.body());
+        }
+
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException("Nation list fetch failed with status " + response.statusCode() + ": " + response.body());
+        }
+
+        return gson.fromJson(response.body(), GameNationListResponse.class);
     }
 
     public void upsertNationStats(NationStatsPayload payload) throws IOException, InterruptedException {

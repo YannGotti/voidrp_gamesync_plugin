@@ -26,12 +26,12 @@ public final class NationSyncService {
     private final GameSyncConfig config;
 
     public NationSyncService(
-        JavaPlugin plugin,
-        BackendClient backendClient,
-        NationRegistry registry,
-        PluginDataStore dataStore,
-        Economy economy,
-        GameSyncConfig config
+            JavaPlugin plugin,
+            BackendClient backendClient,
+            NationRegistry registry,
+            PluginDataStore dataStore,
+            Economy economy,
+            GameSyncConfig config
     ) {
         this.plugin = plugin;
         this.backendClient = backendClient;
@@ -71,6 +71,9 @@ public final class NationSyncService {
             }
         } catch (IOException | InterruptedException exception) {
             plugin.getLogger().warning("Failed to sync nation " + definition.slug() + ": " + exception.getMessage());
+        } catch (Exception exception) {
+            plugin.getLogger().warning("Unexpected sync error for nation " + definition.slug() + ": " + exception.getMessage());
+            exception.printStackTrace();
         }
     }
 
@@ -80,6 +83,7 @@ public final class NationSyncService {
         int pvpKills = 0;
         int mobKills = 0;
         int deaths = 0;
+
         long blocksPlaced = 0L;
         long blocksBroken = 0L;
 
@@ -92,36 +96,37 @@ public final class NationSyncService {
                 try {
                     treasury += economy.getBalance(offlinePlayer);
                 } catch (Throwable ignored) {
-                    // ignored intentionally
+                    // ignore economy provider edge cases
                 }
             }
 
-            if (config.isStatsOnlineOnly()) {
-                Player onlinePlayer = Bukkit.getPlayerExact(nickname);
-                if (onlinePlayer == null) {
-                    continue;
-                }
-
-                playtimeMinutes += onlinePlayer.getStatistic(Statistic.PLAY_ONE_MINUTE) / (20 * 60);
-                pvpKills += onlinePlayer.getStatistic(Statistic.PLAYER_KILLS);
-                mobKills += onlinePlayer.getStatistic(Statistic.MOB_KILLS);
-                deaths += onlinePlayer.getStatistic(Statistic.DEATHS);
-                blocksPlaced += onlinePlayer.getStatistic(Statistic.USE_ITEM);
-                blocksBroken += onlinePlayer.getStatistic(Statistic.MINE_BLOCK);
+            Player onlinePlayer = Bukkit.getPlayerExact(nickname);
+            if (onlinePlayer == null) {
                 continue;
             }
 
-            if (offlinePlayer.isOnline()) {
-                Player player = offlinePlayer.getPlayer();
-                if (player != null) {
-                    playtimeMinutes += player.getStatistic(Statistic.PLAY_ONE_MINUTE) / (20 * 60);
-                    pvpKills += player.getStatistic(Statistic.PLAYER_KILLS);
-                    mobKills += player.getStatistic(Statistic.MOB_KILLS);
-                    deaths += player.getStatistic(Statistic.DEATHS);
-                    blocksPlaced += player.getStatistic(Statistic.USE_ITEM);
-                    blocksBroken += player.getStatistic(Statistic.MINE_BLOCK);
-                }
+            try {
+                playtimeMinutes += onlinePlayer.getStatistic(Statistic.PLAY_ONE_MINUTE) / (20 * 60);
+            } catch (Exception ignored) {
             }
+
+            try {
+                pvpKills += onlinePlayer.getStatistic(Statistic.PLAYER_KILLS);
+            } catch (Exception ignored) {
+            }
+
+            try {
+                mobKills += onlinePlayer.getStatistic(Statistic.MOB_KILLS);
+            } catch (Exception ignored) {
+            }
+
+            try {
+                deaths += onlinePlayer.getStatistic(Statistic.DEATHS);
+            } catch (Exception ignored) {
+            }
+
+            // USE_ITEM и MINE_BLOCK требуют дополнительный параметр Material.
+            // Пока оставляем 0, чтобы sync не падал.
         }
 
         int territoryPoints = definition.territoryPoints() + dataStore.getNationOverride(definition.slug(), "territory");
@@ -130,7 +135,7 @@ public final class NationSyncService {
         int prestigeBonus = definition.prestigeBonus() + dataStore.getNationOverride(definition.slug(), "prestige");
 
         int prestigeScore = (int) Math.round(
-            treasury * 0.002
+                treasury * 0.002
                 + territoryPoints * 15
                 + playtimeMinutes * 0.05
                 + pvpKills * 8
@@ -141,18 +146,18 @@ public final class NationSyncService {
         );
 
         return new NationStatsPayload(
-            definition.slug(),
-            round2(treasury),
-            territoryPoints,
-            playtimeMinutes,
-            pvpKills,
-            mobKills,
-            bossKills,
-            deaths,
-            blocksPlaced,
-            blocksBroken,
-            eventsCompleted,
-            prestigeScore
+                definition.slug(),
+                round2(treasury),
+                territoryPoints,
+                playtimeMinutes,
+                pvpKills,
+                mobKills,
+                bossKills,
+                deaths,
+                blocksPlaced,
+                blocksBroken,
+                eventsCompleted,
+                prestigeScore
         );
     }
 

@@ -14,6 +14,8 @@ import org.bukkit.entity.Player;
 
 import ru.voidrp.gamesync.VoidRpGameSyncPlugin;
 import ru.voidrp.gamesync.model.NationDefinition;
+import ru.voidrp.gamesync.service.TerritoryPointsResolver.TerritoryDebugReport;
+import ru.voidrp.gamesync.service.TerritoryPointsResolver.TerritoryMatch;
 
 public final class VoidRpAdminCommand implements CommandExecutor, TabCompleter {
 
@@ -61,6 +63,10 @@ public final class VoidRpAdminCommand implements CommandExecutor, TabCompleter {
             }
             case "nations" -> {
                 handleNations(sender, args);
+                return true;
+            }
+            case "territory" -> {
+                handleTerritory(sender, args);
                 return true;
             }
             default -> {
@@ -194,12 +200,58 @@ public final class VoidRpAdminCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§aNation registry refreshed. Source: §f" + plugin.getNationRegistry().getSource());
     }
 
+    private void handleTerritory(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage("§eИспользование: /vrgs territory <slug>");
+            return;
+        }
+
+        String slug = args[1].toLowerCase(Locale.ROOT);
+        NationDefinition definition = plugin.getNationRegistry().get(slug);
+        if (definition == null) {
+            sender.sendMessage("§cГосударство не найдено: " + slug);
+            return;
+        }
+
+        TerritoryDebugReport report = plugin.getTerritoryPointsResolver().buildDebugReport(definition);
+
+        sender.sendMessage("§6=== Territory debug: §f" + definition.slug() + " §6===");
+        sender.sendMessage("§7Source: §f" + valueOrDash(report.source)
+            + " §8| §7Mode: §f" + valueOrDash(report.countMode)
+            + " §8| §7Fallback: §f" + report.fallbackToManual);
+        sender.sendMessage("§7Members resolved: §fUUID=" + report.memberUuidsResolved + "§7, names=" + report.memberNamesResolved);
+        sender.sendMessage("§7Manual: §f" + report.manualValue
+            + " §8| §7WG: §f" + report.worldguardValue
+            + " §8| §7Final: §a" + report.finalValue);
+        sender.sendMessage("§7Resolution: §f" + valueOrDash(report.resolutionMode));
+
+        if (report.error != null && !report.error.isBlank()) {
+            sender.sendMessage("§cError: " + report.error);
+        }
+
+        if (report.matches.isEmpty()) {
+            sender.sendMessage("§eСовпавшие регионы не найдены.");
+            return;
+        }
+
+        sender.sendMessage("§7Засчитанные регионы: §f" + report.matches.size());
+        for (TerritoryMatch match : report.matches) {
+            sender.sendMessage(
+                "§8- §f" + match.worldName() + "/" + match.regionId()
+                    + " §8| §7owner: §f" + match.matchType() + "=" + match.matchedValue()
+                    + " §8| §7area: §a" + match.contributedArea()
+                    + " §8| §7mode: §f" + match.countMode()
+            );
+        }
+    }
+
     private void sendHelp(CommandSender sender) {
         sender.sendMessage("§6VoidRpGameSync commands:");
         sender.sendMessage("§e/vrgs reload");
         sender.sendMessage("§e/vrgs sync all");
         sender.sendMessage("§e/vrgs sync nation <slug>");
         sender.sendMessage("§e/vrgs nations refresh");
+        sender.sendMessage("§e/vrgs territory <slug>");
         sender.sendMessage("§e/vrgs meta reconcile");
         sender.sendMessage("§e/vrgs meta apply <player>");
         sender.sendMessage("§e/vrgs reward resolve <player>");
@@ -212,7 +264,7 @@ public final class VoidRpAdminCommand implements CommandExecutor, TabCompleter {
         if (!sender.hasPermission("voidrp.gamesync.admin")) return List.of();
 
         if (args.length == 1) {
-            return filter(args[0], List.of("reload", "sync", "reward", "nation", "meta", "nations"));
+            return filter(args[0], List.of("reload", "sync", "reward", "nation", "meta", "nations", "territory"));
         }
 
         if (args.length == 2 && args[0].equalsIgnoreCase("sync")) {
@@ -263,6 +315,12 @@ public final class VoidRpAdminCommand implements CommandExecutor, TabCompleter {
             return filter(args[3], List.of("territory", "bosskills", "events", "prestige"));
         }
 
+        if (args.length == 2 && args[0].equalsIgnoreCase("territory")) {
+            List<String> slugs = new ArrayList<>();
+            for (NationDefinition def : plugin.getNationRegistry().all()) slugs.add(def.slug());
+            return filter(args[1], slugs);
+        }
+
         return List.of();
     }
 
@@ -271,5 +329,9 @@ public final class VoidRpAdminCommand implements CommandExecutor, TabCompleter {
         return values.stream()
             .filter(value -> value.toLowerCase(Locale.ROOT).startsWith(lowered))
             .toList();
+    }
+
+    private String valueOrDash(String value) {
+        return value == null || value.isBlank() ? "-" : value;
     }
 }

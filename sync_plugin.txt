@@ -1,0 +1,1465 @@
+E:\voidrp_paper_gamesync_plugin
+
+├── src
+│   └── main
+│       ├── java
+│       │   └── ru
+│       │       └── voidrp
+│       │           └── gamesync
+│       │               ├── command
+│       │               │   └── VoidRpAdminCommand.java
+│       │               ├── config
+│       │               │   ├── GameSyncConfig.java
+│       │               │   └── NationRegistry.java
+│       │               ├── listener
+│       │               │   └── PlayerJoinRewardListener.java
+│       │               ├── model
+│       │               │   ├── NationDefinition.java
+│       │               │   ├── NationStatsPayload.java
+│       │               │   └── ReferralResolveResponse.java
+│       │               ├── service
+│       │               │   ├── BackendClient.java
+│       │               │   ├── NationSyncService.java
+│       │               │   ├── ReferralRewardService.java
+│       │               │   ├── RewardCacheService.java
+│       │               │   └── SyncScheduler.java
+│       │               ├── store
+│       │               │   └── PluginDataStore.java
+│       │               ├── util
+│       │               │   └── NameNormalizer.java
+│       │               └── VoidRpGameSyncPlugin.java
+│       └── resources
+│           ├── config.yml
+│           ├── data.yml
+│           ├── nations.yml
+│           └── plugin.yml
+├── build.gradle.kts
+├── dump.py
+├── README.md
+└── settings.gradle.kts
+
+============================================================
+СОДЕРЖИМОЕ ФАЙЛОВ (.java, .yml)
+============================================================
+
+------------------------------------------------------------
+Файл: E:\voidrp_paper_gamesync_plugin\src\main\java\ru\voidrp\gamesync\command\VoidRpAdminCommand.java
+------------------------------------------------------------
+package ru.voidrp.gamesync.command;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
+
+import org.bukkit.Bukkit;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandExecutor;
+import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabCompleter;
+import org.bukkit.entity.Player;
+
+import ru.voidrp.gamesync.VoidRpGameSyncPlugin;
+import ru.voidrp.gamesync.model.NationDefinition;
+import ru.voidrp.gamesync.model.ReferralResolveResponse;
+
+public final class VoidRpAdminCommand implements CommandExecutor, TabCompleter {
+
+    private final VoidRpGameSyncPlugin plugin;
+
+    public VoidRpAdminCommand(VoidRpGameSyncPlugin plugin) {
+        this.plugin = plugin;
+    }
+
+    @Override
+    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (!sender.hasPermission("voidrp.gamesync.admin")) {
+            sender.sendMessage("§cНет прав.");
+            return true;
+        }
+
+        if (args.length == 0) {
+            sendHelp(sender);
+            return true;
+        }
+
+        String sub = args[0].toLowerCase(Locale.ROOT);
+
+        switch (sub) {
+            case "reload" -> {
+                plugin.reloadPluginState();
+                sender.sendMessage("§aVoidRpGameSync reload completed.");
+                return true;
+            }
+            case "sync" -> {
+                handleSync(sender, args);
+                return true;
+            }
+            case "reward" -> {
+                handleReward(sender, args);
+                return true;
+            }
+            case "nation" -> {
+                handleNation(sender, args);
+                return true;
+            }
+            default -> {
+                sendHelp(sender);
+                return true;
+            }
+        }
+    }
+
+    private void handleSync(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage("§eИспользование: /vrgs sync <all|nation> [slug]");
+            return;
+        }
+
+        String mode = args[1].toLowerCase(Locale.ROOT);
+        if (mode.equals("all")) {
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> plugin.getNationSyncService().syncAll());
+            sender.sendMessage("§aЗапущен sync всех государств.");
+            return;
+        }
+
+        if (mode.equals("nation")) {
+            if (args.length < 3) {
+                sender.sendMessage("§eИспользование: /vrgs sync nation <slug>");
+                return;
+            }
+            String slug = args[2];
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> plugin.getNationSyncService().syncNation(slug));
+            sender.sendMessage("§aЗапущен sync государства: §f" + slug);
+            return;
+        }
+
+        sender.sendMessage("§cНеизвестный режим sync.");
+    }
+
+    private void handleReward(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("§eИспользование: /vrgs reward <resolve|apply> <player>");
+            return;
+        }
+
+        Player target = Bukkit.getPlayerExact(args[2]);
+        if (target == null) {
+            sender.sendMessage("§cИгрок не найден онлайн: " + args[2]);
+            return;
+        }
+
+        String mode = args[1].toLowerCase(Locale.ROOT);
+
+        if (mode.equals("resolve")) {
+            plugin.getReferralRewardService().resolveAndMaybeApply(target, false);
+            sender.sendMessage("§aЗапущен resolve reward для §f" + target.getName());
+            return;
+        }
+
+        if (mode.equals("apply")) {
+            plugin.getReferralRewardService().resolveAndMaybeApply(target, true);
+            sender.sendMessage("§aЗапущен force apply reward для §f" + target.getName());
+            return;
+        }
+
+        sender.sendMessage("§cНеизвестный режим reward.");
+    }
+
+    private void handleNation(CommandSender sender, String[] args) {
+        if (args.length < 5 || !args[1].equalsIgnoreCase("set")) {
+            sender.sendMessage("§eИспользование: /vrgs nation set <slug> <territory|bosskills|events|prestige> <value>");
+            return;
+        }
+
+        String slug = args[2].toLowerCase(Locale.ROOT);
+        String key = args[3].toLowerCase(Locale.ROOT);
+
+        if (!Arrays.asList("territory", "bosskills", "events", "prestige").contains(key)) {
+            sender.sendMessage("§cДопустимые ключи: territory, bosskills, events, prestige");
+            return;
+        }
+
+        int value;
+        try {
+            value = Integer.parseInt(args[4]);
+        } catch (NumberFormatException exception) {
+            sender.sendMessage("§cValue должен быть числом.");
+            return;
+        }
+
+        plugin.getDataStore().setNationOverride(slug, key, value);
+        plugin.getDataStore().saveNow();
+        sender.sendMessage("§aOverride сохранён: §f" + slug + " / " + key + " = " + value);
+    }
+
+    private void sendHelp(CommandSender sender) {
+        sender.sendMessage("§6VoidRpGameSync commands:");
+        sender.sendMessage("§e/vrgs reload");
+        sender.sendMessage("§e/vrgs sync all");
+        sender.sendMessage("§e/vrgs sync nation <slug>");
+        sender.sendMessage("§e/vrgs reward resolve <player>");
+        sender.sendMessage("§e/vrgs reward apply <player>");
+        sender.sendMessage("§e/vrgs nation set <slug> <territory|bosskills|events|prestige> <value>");
+    }
+
+    @Override
+    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        if (!sender.hasPermission("voidrp.gamesync.admin")) {
+            return List.of();
+        }
+
+        if (args.length == 1) {
+            return filter(args[0], List.of("reload", "sync", "reward", "nation"));
+        }
+
+        if (args.length == 2 && args[0].equalsIgnoreCase("sync")) {
+            return filter(args[1], List.of("all", "nation"));
+        }
+
+        if (args.length == 3 && args[0].equalsIgnoreCase("sync") && args[1].equalsIgnoreCase("nation")) {
+            List<String> slugs = new ArrayList<>();
+            for (NationDefinition def : plugin.getNationRegistry().all()) {
+                slugs.add(def.slug());
+            }
+            return filter(args[2], slugs);
+        }
+
+        if (args.length == 2 && args[0].equalsIgnoreCase("reward")) {
+            return filter(args[1], List.of("resolve", "apply"));
+        }
+
+        if (args.length == 3 && args[0].equalsIgnoreCase("reward")) {
+            List<String> names = new ArrayList<>();
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                names.add(player.getName());
+            }
+            return filter(args[2], names);
+        }
+
+        if (args.length == 2 && args[0].equalsIgnoreCase("nation")) {
+            return filter(args[1], List.of("set"));
+        }
+
+        if (args.length == 3 && args[0].equalsIgnoreCase("nation") && args[1].equalsIgnoreCase("set")) {
+            List<String> slugs = new ArrayList<>();
+            for (NationDefinition def : plugin.getNationRegistry().all()) {
+                slugs.add(def.slug());
+            }
+            return filter(args[2], slugs);
+        }
+
+        if (args.length == 4 && args[0].equalsIgnoreCase("nation") && args[1].equalsIgnoreCase("set")) {
+            return filter(args[3], List.of("territory", "bosskills", "events", "prestige"));
+        }
+
+        return List.of();
+    }
+
+    private List<String> filter(String input, List<String> values) {
+        String lowered = input.toLowerCase(Locale.ROOT);
+        return values.stream()
+            .filter(value -> value.toLowerCase(Locale.ROOT).startsWith(lowered))
+            .toList();
+    }
+}
+
+
+
+------------------------------------------------------------
+Файл: E:\voidrp_paper_gamesync_plugin\src\main\java\ru\voidrp\gamesync\config\GameSyncConfig.java
+------------------------------------------------------------
+package ru.voidrp.gamesync.config;
+
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.plugin.java.JavaPlugin;
+
+public final class GameSyncConfig {
+
+    private final String backendBaseUrl;
+    private final String apiPrefix;
+    private final String gameAuthSecret;
+    private final int connectTimeoutMs;
+    private final int readTimeoutMs;
+
+    private final boolean syncEnabled;
+    private final long syncPeriodTicks;
+    private final boolean syncMembership;
+    private final boolean syncStats;
+    private final boolean statsOnlineOnly;
+
+    private final boolean resolveOnJoin;
+    private final long joinDelayTicks;
+    private final boolean autoApplyOnJoin;
+    private final boolean suppressDuplicateRewardUntilExpiry;
+
+    private final boolean debugHttp;
+    private final boolean verboseSync;
+
+    private final ConfigurationSection rewardBundlesSection;
+
+    public GameSyncConfig(JavaPlugin plugin) {
+        this.backendBaseUrl = trimTrailingSlash(plugin.getConfig().getString("backend.base-url", "https://api.void-rp.ru"));
+        this.apiPrefix = plugin.getConfig().getString("backend.api-prefix", "/api/v1");
+        this.gameAuthSecret = plugin.getConfig().getString("backend.game-auth-secret", "");
+        this.connectTimeoutMs = plugin.getConfig().getInt("backend.connect-timeout-ms", 10000);
+        this.readTimeoutMs = plugin.getConfig().getInt("backend.read-timeout-ms", 20000);
+
+        this.syncEnabled = plugin.getConfig().getBoolean("sync.enabled", true);
+        this.syncPeriodTicks = Math.max(20L, plugin.getConfig().getLong("sync.period-seconds", 300L) * 20L);
+        this.syncMembership = plugin.getConfig().getBoolean("sync.sync-membership", true);
+        this.syncStats = plugin.getConfig().getBoolean("sync.sync-stats", true);
+        this.statsOnlineOnly = plugin.getConfig().getBoolean("sync.stats-online-only", true);
+
+        this.resolveOnJoin = plugin.getConfig().getBoolean("referrals.resolve-on-join", true);
+        this.joinDelayTicks = Math.max(1L, plugin.getConfig().getLong("referrals.join-delay-ticks", 60L));
+        this.autoApplyOnJoin = plugin.getConfig().getBoolean("referrals.auto-apply-on-join", true);
+        this.suppressDuplicateRewardUntilExpiry = plugin.getConfig().getBoolean("referrals.suppress-duplicate-reward-until-expiry", true);
+
+        this.debugHttp = plugin.getConfig().getBoolean("debug.log-http", false);
+        this.verboseSync = plugin.getConfig().getBoolean("debug.verbose-sync", false);
+
+        this.rewardBundlesSection = plugin.getConfig().getConfigurationSection("reward-bundles");
+    }
+
+    public String getBackendBaseUrl() {
+        return backendBaseUrl;
+    }
+
+    public String getApiPrefix() {
+        return apiPrefix;
+    }
+
+    public String getGameAuthSecret() {
+        return gameAuthSecret;
+    }
+
+    public int getConnectTimeoutMs() {
+        return connectTimeoutMs;
+    }
+
+    public int getReadTimeoutMs() {
+        return readTimeoutMs;
+    }
+
+    public boolean isSyncEnabled() {
+        return syncEnabled;
+    }
+
+    public long getSyncPeriodTicks() {
+        return syncPeriodTicks;
+    }
+
+    public boolean isSyncMembership() {
+        return syncMembership;
+    }
+
+    public boolean isSyncStats() {
+        return syncStats;
+    }
+
+    public boolean isStatsOnlineOnly() {
+        return statsOnlineOnly;
+    }
+
+    public boolean isResolveOnJoin() {
+        return resolveOnJoin;
+    }
+
+    public long getJoinDelayTicks() {
+        return joinDelayTicks;
+    }
+
+    public boolean isAutoApplyOnJoin() {
+        return autoApplyOnJoin;
+    }
+
+    public boolean isSuppressDuplicateRewardUntilExpiry() {
+        return suppressDuplicateRewardUntilExpiry;
+    }
+
+    public boolean isDebugHttp() {
+        return debugHttp;
+    }
+
+    public boolean isVerboseSync() {
+        return verboseSync;
+    }
+
+    public List<String> getRewardCommands(String bundleKey) {
+        if (rewardBundlesSection == null) {
+            return Collections.emptyList();
+        }
+
+        ConfigurationSection section = rewardBundlesSection.getConfigurationSection(bundleKey);
+        if (section == null) {
+            return Collections.emptyList();
+        }
+
+        return section.getStringList("commands");
+    }
+
+    private String trimTrailingSlash(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
+    }
+}
+
+
+
+------------------------------------------------------------
+Файл: E:\voidrp_paper_gamesync_plugin\src\main\java\ru\voidrp\gamesync\config\NationRegistry.java
+------------------------------------------------------------
+package ru.voidrp.gamesync.config;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.TreeMap;
+
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.plugin.java.JavaPlugin;
+
+import ru.voidrp.gamesync.model.NationDefinition;
+import ru.voidrp.gamesync.util.NameNormalizer;
+
+public final class NationRegistry {
+
+    private final Map<String, NationDefinition> nations = new TreeMap<>();
+
+    public NationRegistry(JavaPlugin plugin) {
+        File file = new File(plugin.getDataFolder(), "nations.yml");
+        YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
+
+        ConfigurationSection root = yaml.getConfigurationSection("nations");
+        if (root == null) {
+            return;
+        }
+
+        for (String slugKey : root.getKeys(false)) {
+            ConfigurationSection nationSection = root.getConfigurationSection(slugKey);
+            if (nationSection == null) {
+                continue;
+            }
+
+            String slug = slugKey.toLowerCase(Locale.ROOT);
+            String title = nationSection.getString("title", slug);
+            String leader = normalizeOrNull(nationSection.getString("leader"));
+            List<String> officers = normalizeList(nationSection.getStringList("officers"));
+            List<String> members = normalizeList(nationSection.getStringList("members"));
+
+            int territoryPoints = nationSection.getInt("manual.territory-points", 0);
+            int bossKills = nationSection.getInt("manual.boss-kills", 0);
+            int eventsCompleted = nationSection.getInt("manual.events-completed", 0);
+            int prestigeBonus = nationSection.getInt("manual.prestige-bonus", 0);
+
+            NationDefinition definition = new NationDefinition(
+                slug,
+                title,
+                leader,
+                officers,
+                members,
+                territoryPoints,
+                bossKills,
+                eventsCompleted,
+                prestigeBonus
+            );
+            nations.put(slug, definition);
+        }
+    }
+
+    public List<NationDefinition> all() {
+        return new ArrayList<>(nations.values());
+    }
+
+    public NationDefinition get(String slug) {
+        if (slug == null) {
+            return null;
+        }
+        return nations.get(slug.toLowerCase(Locale.ROOT));
+    }
+
+    private String normalizeOrNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return NameNormalizer.normalizeMinecraftName(value);
+    }
+
+    private List<String> normalizeList(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<String> result = new ArrayList<>();
+        for (String value : values) {
+            if (value == null || value.isBlank()) {
+                continue;
+            }
+            result.add(NameNormalizer.normalizeMinecraftName(value));
+        }
+        return result;
+    }
+}
+
+
+
+------------------------------------------------------------
+Файл: E:\voidrp_paper_gamesync_plugin\src\main\java\ru\voidrp\gamesync\listener\PlayerJoinRewardListener.java
+------------------------------------------------------------
+package ru.voidrp.gamesync.listener;
+
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
+
+import ru.voidrp.gamesync.VoidRpGameSyncPlugin;
+
+public final class PlayerJoinRewardListener implements Listener {
+
+    private final VoidRpGameSyncPlugin plugin;
+
+    public PlayerJoinRewardListener(VoidRpGameSyncPlugin plugin) {
+        this.plugin = plugin;
+    }
+
+    @EventHandler
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        if (!plugin.getGameSyncConfig().isResolveOnJoin()) {
+            return;
+        }
+
+        plugin.getServer().getScheduler().runTaskLaterAsynchronously(
+            plugin,
+            () -> plugin.getReferralRewardService().resolveAndMaybeApply(event.getPlayer(), false),
+            plugin.getGameSyncConfig().getJoinDelayTicks()
+        );
+    }
+}
+
+
+
+------------------------------------------------------------
+Файл: E:\voidrp_paper_gamesync_plugin\src\main\java\ru\voidrp\gamesync\model\NationDefinition.java
+------------------------------------------------------------
+package ru.voidrp.gamesync.model;
+
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+
+public record NationDefinition(
+    String slug,
+    String title,
+    String leader,
+    List<String> officers,
+    List<String> members,
+    int territoryPoints,
+    int bossKills,
+    int eventsCompleted,
+    int prestigeBonus
+) {
+    public List<String> allMembersIncludingRoles() {
+        Set<String> all = new LinkedHashSet<>();
+        if (leader != null && !leader.isBlank()) {
+            all.add(leader);
+        }
+        all.addAll(officers);
+        all.addAll(members);
+        return new ArrayList<>(all);
+    }
+}
+
+
+
+------------------------------------------------------------
+Файл: E:\voidrp_paper_gamesync_plugin\src\main\java\ru\voidrp\gamesync\model\NationStatsPayload.java
+------------------------------------------------------------
+package ru.voidrp.gamesync.model;
+
+public record NationStatsPayload(
+    String nationSlug,
+    double treasuryBalance,
+    int territoryPoints,
+    int totalPlaytimeMinutes,
+    int pvpKills,
+    int mobKills,
+    int bossKills,
+    int deaths,
+    long blocksPlaced,
+    long blocksBroken,
+    int eventsCompleted,
+    int prestigeScore
+) {
+}
+
+
+
+------------------------------------------------------------
+Файл: E:\voidrp_paper_gamesync_plugin\src\main\java\ru\voidrp\gamesync\model\ReferralResolveResponse.java
+------------------------------------------------------------
+package ru.voidrp.gamesync.model;
+
+import java.util.List;
+
+public final class ReferralResolveResponse {
+    public String minecraft_nickname;
+    public boolean player_exists;
+    public boolean has_active_reward;
+    public Reward reward;
+
+    public static final class Reward {
+        public String referral_rank;
+        public String starts_at;
+        public String expires_at;
+        public String reward_state;
+        public int source_qualified_referrals;
+        public String reward_bundle_key;
+        public List<String> game_perks;
+    }
+}
+
+
+
+------------------------------------------------------------
+Файл: E:\voidrp_paper_gamesync_plugin\src\main\java\ru\voidrp\gamesync\service\BackendClient.java
+------------------------------------------------------------
+package ru.voidrp.gamesync.service;
+
+import java.io.IOException;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+
+import org.bukkit.plugin.java.JavaPlugin;
+
+import ru.voidrp.gamesync.config.GameSyncConfig;
+import ru.voidrp.gamesync.model.NationDefinition;
+import ru.voidrp.gamesync.model.NationStatsPayload;
+import ru.voidrp.gamesync.model.ReferralResolveResponse;
+
+public final class BackendClient {
+
+    private final JavaPlugin plugin;
+    private final GameSyncConfig config;
+    private final HttpClient httpClient;
+    private final Gson gson;
+
+    public BackendClient(JavaPlugin plugin, GameSyncConfig config) {
+        this.plugin = plugin;
+        this.config = config;
+        this.httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofMillis(config.getConnectTimeoutMs()))
+            .build();
+        this.gson = new GsonBuilder().create();
+    }
+
+    public void upsertNationStats(NationStatsPayload payload) throws IOException, InterruptedException {
+        String url = apiUrl("/nation-stats/internal/upsert");
+        String json = gson.toJson(payload);
+
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+            .timeout(Duration.ofMillis(config.getReadTimeoutMs()))
+            .header("Content-Type", "application/json")
+            .header("X-Game-Auth-Secret", config.getGameAuthSecret())
+            .POST(HttpRequest.BodyPublishers.ofString(json))
+            .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (config.isDebugHttp()) {
+            plugin.getLogger().info("[HTTP] POST " + url + " -> " + response.statusCode() + " body=" + response.body());
+        }
+
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException("Nation stats upsert failed with status " + response.statusCode() + ": " + response.body());
+        }
+    }
+
+    public void syncNationMembership(NationDefinition definition) throws IOException, InterruptedException {
+        String path = "/game-sync/nations/" + encode(definition.slug()) + "/membership";
+        String url = apiUrl(path);
+
+        String json = gson.toJson(new MembershipRequest(
+            definition.leader(),
+            definition.officers(),
+            definition.members(),
+            true
+        ));
+
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+            .timeout(Duration.ofMillis(config.getReadTimeoutMs()))
+            .header("Content-Type", "application/json")
+            .header("X-Game-Auth-Secret", config.getGameAuthSecret())
+            .POST(HttpRequest.BodyPublishers.ofString(json))
+            .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (config.isDebugHttp()) {
+            plugin.getLogger().info("[HTTP] POST " + url + " -> " + response.statusCode() + " body=" + response.body());
+        }
+
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException("Nation membership sync failed with status " + response.statusCode() + ": " + response.body());
+        }
+    }
+
+    public ReferralResolveResponse resolveReferralReward(String minecraftNickname) throws IOException, InterruptedException {
+        String path = "/game-sync/referrals/reward/" + encode(minecraftNickname);
+        String url = apiUrl(path);
+
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+            .timeout(Duration.ofMillis(config.getReadTimeoutMs()))
+            .header("X-Game-Auth-Secret", config.getGameAuthSecret())
+            .GET()
+            .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (config.isDebugHttp()) {
+            plugin.getLogger().info("[HTTP] GET " + url + " -> " + response.statusCode() + " body=" + response.body());
+        }
+
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException("Referral resolve failed with status " + response.statusCode() + ": " + response.body());
+        }
+
+        return gson.fromJson(response.body(), ReferralResolveResponse.class);
+    }
+
+    private String apiUrl(String path) {
+        return config.getBackendBaseUrl() + config.getApiPrefix() + path;
+    }
+
+    private String encode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
+    }
+
+    private record MembershipRequest(
+        String leader_minecraft_nickname,
+        java.util.List<String> officers,
+        java.util.List<String> members,
+        boolean replace_missing
+    ) {}
+}
+
+
+
+------------------------------------------------------------
+Файл: E:\voidrp_paper_gamesync_plugin\src\main\java\ru\voidrp\gamesync\service\NationSyncService.java
+------------------------------------------------------------
+package ru.voidrp.gamesync.service;
+
+import java.io.IOException;
+import java.util.List;
+
+import org.bukkit.Bukkit;
+import org.bukkit.OfflinePlayer;
+import org.bukkit.Statistic;
+import org.bukkit.entity.Player;
+import org.bukkit.plugin.java.JavaPlugin;
+
+import net.milkbowl.vault.economy.Economy;
+import ru.voidrp.gamesync.config.GameSyncConfig;
+import ru.voidrp.gamesync.config.NationRegistry;
+import ru.voidrp.gamesync.model.NationDefinition;
+import ru.voidrp.gamesync.model.NationStatsPayload;
+import ru.voidrp.gamesync.store.PluginDataStore;
+
+public final class NationSyncService {
+
+    private final JavaPlugin plugin;
+    private final BackendClient backendClient;
+    private final NationRegistry registry;
+    private final PluginDataStore dataStore;
+    private final Economy economy;
+    private final GameSyncConfig config;
+
+    public NationSyncService(
+        JavaPlugin plugin,
+        BackendClient backendClient,
+        NationRegistry registry,
+        PluginDataStore dataStore,
+        Economy economy,
+        GameSyncConfig config
+    ) {
+        this.plugin = plugin;
+        this.backendClient = backendClient;
+        this.registry = registry;
+        this.dataStore = dataStore;
+        this.economy = economy;
+        this.config = config;
+    }
+
+    public void syncAll() {
+        for (NationDefinition nation : registry.all()) {
+            syncNation(nation.slug());
+        }
+    }
+
+    public void syncNation(String slug) {
+        NationDefinition definition = registry.get(slug);
+        if (definition == null) {
+            plugin.getLogger().warning("Nation not found in nations.yml: " + slug);
+            return;
+        }
+
+        try {
+            if (config.isSyncMembership()) {
+                backendClient.syncNationMembership(definition);
+                if (config.isVerboseSync()) {
+                    plugin.getLogger().info("Membership synced for nation " + definition.slug());
+                }
+            }
+
+            if (config.isSyncStats()) {
+                NationStatsPayload payload = buildStatsPayload(definition);
+                backendClient.upsertNationStats(payload);
+                if (config.isVerboseSync()) {
+                    plugin.getLogger().info("Stats synced for nation " + definition.slug());
+                }
+            }
+        } catch (IOException | InterruptedException exception) {
+            plugin.getLogger().warning("Failed to sync nation " + definition.slug() + ": " + exception.getMessage());
+        }
+    }
+
+    public NationStatsPayload buildStatsPayload(NationDefinition definition) {
+        double treasury = 0D;
+        int playtimeMinutes = 0;
+        int pvpKills = 0;
+        int mobKills = 0;
+        int deaths = 0;
+        long blocksPlaced = 0L;
+        long blocksBroken = 0L;
+
+        List<String> allMembers = definition.allMembersIncludingRoles();
+
+        for (String nickname : allMembers) {
+            OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(nickname);
+
+            if (economy != null) {
+                try {
+                    treasury += economy.getBalance(offlinePlayer);
+                } catch (Throwable ignored) {
+                    // ignored intentionally
+                }
+            }
+
+            if (config.isStatsOnlineOnly()) {
+                Player onlinePlayer = Bukkit.getPlayerExact(nickname);
+                if (onlinePlayer == null) {
+                    continue;
+                }
+
+                playtimeMinutes += onlinePlayer.getStatistic(Statistic.PLAY_ONE_MINUTE) / (20 * 60);
+                pvpKills += onlinePlayer.getStatistic(Statistic.PLAYER_KILLS);
+                mobKills += onlinePlayer.getStatistic(Statistic.MOB_KILLS);
+                deaths += onlinePlayer.getStatistic(Statistic.DEATHS);
+                blocksPlaced += onlinePlayer.getStatistic(Statistic.USE_ITEM);
+                blocksBroken += onlinePlayer.getStatistic(Statistic.MINE_BLOCK);
+                continue;
+            }
+
+            if (offlinePlayer.isOnline()) {
+                Player player = offlinePlayer.getPlayer();
+                if (player != null) {
+                    playtimeMinutes += player.getStatistic(Statistic.PLAY_ONE_MINUTE) / (20 * 60);
+                    pvpKills += player.getStatistic(Statistic.PLAYER_KILLS);
+                    mobKills += player.getStatistic(Statistic.MOB_KILLS);
+                    deaths += player.getStatistic(Statistic.DEATHS);
+                    blocksPlaced += player.getStatistic(Statistic.USE_ITEM);
+                    blocksBroken += player.getStatistic(Statistic.MINE_BLOCK);
+                }
+            }
+        }
+
+        int territoryPoints = definition.territoryPoints() + dataStore.getNationOverride(definition.slug(), "territory");
+        int bossKills = definition.bossKills() + dataStore.getNationOverride(definition.slug(), "bosskills");
+        int eventsCompleted = definition.eventsCompleted() + dataStore.getNationOverride(definition.slug(), "events");
+        int prestigeBonus = definition.prestigeBonus() + dataStore.getNationOverride(definition.slug(), "prestige");
+
+        int prestigeScore = (int) Math.round(
+            treasury * 0.002
+                + territoryPoints * 15
+                + playtimeMinutes * 0.05
+                + pvpKills * 8
+                + mobKills * 0.2
+                + bossKills * 25
+                + eventsCompleted * 20
+                + prestigeBonus
+        );
+
+        return new NationStatsPayload(
+            definition.slug(),
+            round2(treasury),
+            territoryPoints,
+            playtimeMinutes,
+            pvpKills,
+            mobKills,
+            bossKills,
+            deaths,
+            blocksPlaced,
+            blocksBroken,
+            eventsCompleted,
+            prestigeScore
+        );
+    }
+
+    private double round2(double value) {
+        return Math.round(value * 100.0D) / 100.0D;
+    }
+}
+
+
+
+------------------------------------------------------------
+Файл: E:\voidrp_paper_gamesync_plugin\src\main\java\ru\voidrp\gamesync\service\ReferralRewardService.java
+------------------------------------------------------------
+package ru.voidrp.gamesync.service;
+
+import java.io.IOException;
+import java.time.Instant;
+import java.util.List;
+
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
+import org.bukkit.plugin.java.JavaPlugin;
+
+import ru.voidrp.gamesync.config.GameSyncConfig;
+import ru.voidrp.gamesync.model.ReferralResolveResponse;
+
+public final class ReferralRewardService {
+
+    private final JavaPlugin plugin;
+    private final BackendClient backendClient;
+    private final RewardCacheService rewardCacheService;
+    private final GameSyncConfig config;
+
+    public ReferralRewardService(
+        JavaPlugin plugin,
+        BackendClient backendClient,
+        RewardCacheService rewardCacheService,
+        GameSyncConfig config
+    ) {
+        this.plugin = plugin;
+        this.backendClient = backendClient;
+        this.rewardCacheService = rewardCacheService;
+        this.config = config;
+    }
+
+    public void resolveAndMaybeApply(Player player, boolean forceApply) {
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                ReferralResolveResponse response = backendClient.resolveReferralReward(player.getName());
+
+                if (response == null || !response.player_exists || !response.has_active_reward || response.reward == null) {
+                    if (config.isVerboseSync()) {
+                        plugin.getLogger().info("No active referral reward for " + player.getName());
+                    }
+                    return;
+                }
+
+                if (config.isSuppressDuplicateRewardUntilExpiry() && !forceApply) {
+                    if (rewardCacheService.isAlreadyGranted(player.getUniqueId(), response.reward.reward_bundle_key, response.reward.expires_at)) {
+                        if (config.isVerboseSync()) {
+                            plugin.getLogger().info("Reward already granted for " + player.getName() + " until " + response.reward.expires_at);
+                        }
+                        return;
+                    }
+                }
+
+                if (!config.isAutoApplyOnJoin() && !forceApply) {
+                    return;
+                }
+
+                applyReward(player, response);
+            } catch (IOException | InterruptedException exception) {
+                plugin.getLogger().warning("Failed to resolve referral reward for " + player.getName() + ": " + exception.getMessage());
+            }
+        });
+    }
+
+    public void applyReward(Player player, ReferralResolveResponse response) {
+        if (response == null || response.reward == null) {
+            return;
+        }
+
+        List<String> commands = config.getRewardCommands(response.reward.reward_bundle_key);
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            for (String command : commands) {
+                String resolved = command.replace("%player%", player.getName());
+                Bukkit.dispatchCommand(Bukkit.getConsoleSender(), resolved);
+            }
+
+            rewardCacheService.markGranted(
+                player.getUniqueId(),
+                response.reward.reward_bundle_key,
+                response.reward.expires_at
+            );
+
+            player.sendMessage("§aТвой реферальный бонус активирован: §f" + response.reward.reward_bundle_key);
+        });
+    }
+}
+
+
+
+------------------------------------------------------------
+Файл: E:\voidrp_paper_gamesync_plugin\src\main\java\ru\voidrp\gamesync\service\RewardCacheService.java
+------------------------------------------------------------
+package ru.voidrp.gamesync.service;
+
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
+import java.util.UUID;
+
+import org.bukkit.plugin.java.JavaPlugin;
+
+import ru.voidrp.gamesync.store.PluginDataStore;
+
+public final class RewardCacheService {
+
+    private final JavaPlugin plugin;
+    private final PluginDataStore dataStore;
+
+    public RewardCacheService(JavaPlugin plugin, PluginDataStore dataStore) {
+        this.plugin = plugin;
+        this.dataStore = dataStore;
+    }
+
+    public boolean isAlreadyGranted(UUID playerId, String bundleKey, String expiresAtRaw) {
+        String storedBundle = dataStore.getRewardBundle(playerId);
+        String storedExpires = dataStore.getRewardExpiresAt(playerId);
+
+        if (storedBundle == null || storedExpires == null) {
+            return false;
+        }
+
+        if (!storedBundle.equalsIgnoreCase(bundleKey)) {
+            return false;
+        }
+
+        try {
+            Instant stored = Instant.parse(storedExpires);
+            Instant incoming = Instant.parse(expiresAtRaw);
+            return !stored.isBefore(incoming);
+        } catch (DateTimeParseException exception) {
+            plugin.getLogger().warning("Failed to parse reward expiry: " + exception.getMessage());
+            return false;
+        }
+    }
+
+    public void markGranted(UUID playerId, String bundleKey, String expiresAtRaw) {
+        dataStore.setRewardGrant(playerId, bundleKey, expiresAtRaw);
+        dataStore.saveNow();
+    }
+}
+
+
+
+------------------------------------------------------------
+Файл: E:\voidrp_paper_gamesync_plugin\src\main\java\ru\voidrp\gamesync\service\SyncScheduler.java
+------------------------------------------------------------
+package ru.voidrp.gamesync.service;
+
+import org.bukkit.Bukkit;
+import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.plugin.java.JavaPlugin;
+
+import ru.voidrp.gamesync.config.GameSyncConfig;
+
+public final class SyncScheduler {
+
+    private final JavaPlugin plugin;
+    private final NationSyncService nationSyncService;
+    private final GameSyncConfig config;
+    private BukkitTask task;
+
+    public SyncScheduler(JavaPlugin plugin, NationSyncService nationSyncService, GameSyncConfig config) {
+        this.plugin = plugin;
+        this.nationSyncService = nationSyncService;
+        this.config = config;
+    }
+
+    public void start() {
+        stop();
+
+        if (!config.isSyncEnabled()) {
+            plugin.getLogger().info("Periodic sync disabled in config.");
+            return;
+        }
+
+        this.task = Bukkit.getScheduler().runTaskTimerAsynchronously(
+            plugin,
+            nationSyncService::syncAll,
+            100L,
+            config.getSyncPeriodTicks()
+        );
+    }
+
+    public void stop() {
+        if (task != null) {
+            task.cancel();
+            task = null;
+        }
+    }
+}
+
+
+
+------------------------------------------------------------
+Файл: E:\voidrp_paper_gamesync_plugin\src\main\java\ru\voidrp\gamesync\store\PluginDataStore.java
+------------------------------------------------------------
+package ru.voidrp.gamesync.store;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.UUID;
+
+import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.plugin.java.JavaPlugin;
+
+public final class PluginDataStore {
+
+    private final JavaPlugin plugin;
+    private final File file;
+    private final YamlConfiguration yaml;
+
+    public PluginDataStore(JavaPlugin plugin) {
+        this.plugin = plugin;
+        this.file = new File(plugin.getDataFolder(), "data.yml");
+        this.yaml = YamlConfiguration.loadConfiguration(file);
+    }
+
+    public String getRewardBundle(UUID playerId) {
+        return yaml.getString("reward-cache." + playerId + ".bundle");
+    }
+
+    public String getRewardExpiresAt(UUID playerId) {
+        return yaml.getString("reward-cache." + playerId + ".expires-at");
+    }
+
+    public void setRewardGrant(UUID playerId, String bundleKey, String expiresAt) {
+        yaml.set("reward-cache." + playerId + ".bundle", bundleKey);
+        yaml.set("reward-cache." + playerId + ".expires-at", expiresAt);
+    }
+
+    public int getNationOverride(String slug, String key) {
+        return yaml.getInt("nation-overrides." + slug + "." + key, 0);
+    }
+
+    public void setNationOverride(String slug, String key, int value) {
+        yaml.set("nation-overrides." + slug + "." + key, value);
+    }
+
+    public void saveNow() {
+        try {
+            yaml.save(file);
+        } catch (IOException exception) {
+            plugin.getLogger().warning("Failed to save data.yml: " + exception.getMessage());
+        }
+    }
+}
+
+
+
+------------------------------------------------------------
+Файл: E:\voidrp_paper_gamesync_plugin\src\main\java\ru\voidrp\gamesync\util\NameNormalizer.java
+------------------------------------------------------------
+package ru.voidrp.gamesync.util;
+
+public final class NameNormalizer {
+
+    private NameNormalizer() {}
+
+    public static String normalizeMinecraftName(String value) {
+        if (value == null) {
+            throw new IllegalArgumentException("minecraft name cannot be null");
+        }
+
+        String trimmed = value.trim();
+        if (trimmed.length() < 3 || trimmed.length() > 16) {
+            throw new IllegalArgumentException("minecraft name must be between 3 and 16 characters");
+        }
+
+        if (!trimmed.matches("^[A-Za-z0-9_]+$")) {
+            throw new IllegalArgumentException("minecraft name contains invalid characters");
+        }
+
+        return trimmed;
+    }
+}
+
+
+
+------------------------------------------------------------
+Файл: E:\voidrp_paper_gamesync_plugin\src\main\java\ru\voidrp\gamesync\VoidRpGameSyncPlugin.java
+------------------------------------------------------------
+package ru.voidrp.gamesync;
+
+import org.bukkit.command.PluginCommand;
+import org.bukkit.plugin.RegisteredServiceProvider;
+import org.bukkit.plugin.java.JavaPlugin;
+
+import net.milkbowl.vault.economy.Economy;
+import ru.voidrp.gamesync.command.VoidRpAdminCommand;
+import ru.voidrp.gamesync.config.GameSyncConfig;
+import ru.voidrp.gamesync.config.NationRegistry;
+import ru.voidrp.gamesync.listener.PlayerJoinRewardListener;
+import ru.voidrp.gamesync.service.BackendClient;
+import ru.voidrp.gamesync.service.NationSyncService;
+import ru.voidrp.gamesync.service.ReferralRewardService;
+import ru.voidrp.gamesync.service.RewardCacheService;
+import ru.voidrp.gamesync.service.SyncScheduler;
+import ru.voidrp.gamesync.store.PluginDataStore;
+
+public final class VoidRpGameSyncPlugin extends JavaPlugin {
+
+    private GameSyncConfig gameSyncConfig;
+    private NationRegistry nationRegistry;
+    private PluginDataStore dataStore;
+    private BackendClient backendClient;
+    private NationSyncService nationSyncService;
+    private RewardCacheService rewardCacheService;
+    private ReferralRewardService referralRewardService;
+    private SyncScheduler syncScheduler;
+    private Economy economy;
+
+    @Override
+    public void onEnable() {
+        saveDefaultConfig();
+        saveResourceIfMissing("nations.yml");
+        saveResourceIfMissing("data.yml");
+
+        this.economy = setupEconomy();
+        reloadPluginState();
+
+        PluginCommand command = getCommand("vrgs");
+        if (command != null) {
+            VoidRpAdminCommand executor = new VoidRpAdminCommand(this);
+            command.setExecutor(executor);
+            command.setTabCompleter(executor);
+        }
+
+        getServer().getPluginManager().registerEvents(new PlayerJoinRewardListener(this), this);
+
+        if (syncScheduler != null) {
+            syncScheduler.start();
+        }
+
+        getLogger().info("VoidRpGameSync enabled.");
+    }
+
+    @Override
+    public void onDisable() {
+        if (syncScheduler != null) {
+            syncScheduler.stop();
+        }
+        if (dataStore != null) {
+            dataStore.saveNow();
+        }
+        getLogger().info("VoidRpGameSync disabled.");
+    }
+
+    public void reloadPluginState() {
+        reloadConfig();
+
+        this.gameSyncConfig = new GameSyncConfig(this);
+        this.nationRegistry = new NationRegistry(this);
+        this.dataStore = new PluginDataStore(this);
+        this.backendClient = new BackendClient(this, gameSyncConfig);
+        this.rewardCacheService = new RewardCacheService(this, dataStore);
+        this.referralRewardService = new ReferralRewardService(this, backendClient, rewardCacheService, gameSyncConfig);
+        this.nationSyncService = new NationSyncService(this, backendClient, nationRegistry, dataStore, economy, gameSyncConfig);
+        this.syncScheduler = new SyncScheduler(this, nationSyncService, gameSyncConfig);
+    }
+
+    private void saveResourceIfMissing(String path) {
+        if (!getDataFolder().exists()) {
+            getDataFolder().mkdirs();
+        }
+        java.io.File target = new java.io.File(getDataFolder(), path);
+        if (!target.exists()) {
+            saveResource(path, false);
+        }
+    }
+
+    private Economy setupEconomy() {
+        if (getServer().getPluginManager().getPlugin("Vault") == null) {
+            getLogger().info("Vault not found. Economy sync will work with 0 balances.");
+            return null;
+        }
+
+        RegisteredServiceProvider<Economy> rsp = getServer().getServicesManager().getRegistration(Economy.class);
+        if (rsp == null) {
+            getLogger().warning("Vault found, but no Economy provider registered.");
+            return null;
+        }
+
+        getLogger().info("Economy provider detected: " + rsp.getProvider().getName());
+        return rsp.getProvider();
+    }
+
+    public GameSyncConfig getGameSyncConfig() {
+        return gameSyncConfig;
+    }
+
+    public NationRegistry getNationRegistry() {
+        return nationRegistry;
+    }
+
+    public PluginDataStore getDataStore() {
+        return dataStore;
+    }
+
+    public BackendClient getBackendClient() {
+        return backendClient;
+    }
+
+    public NationSyncService getNationSyncService() {
+        return nationSyncService;
+    }
+
+    public RewardCacheService getRewardCacheService() {
+        return rewardCacheService;
+    }
+
+    public ReferralRewardService getReferralRewardService() {
+        return referralRewardService;
+    }
+
+    public SyncScheduler getSyncScheduler() {
+        return syncScheduler;
+    }
+
+    public Economy getEconomy() {
+        return economy;
+    }
+}
+
+
+
+------------------------------------------------------------
+Файл: E:\voidrp_paper_gamesync_plugin\src\main\resources\config.yml
+------------------------------------------------------------
+backend:
+  base-url: "https://api.void-rp.ru"
+  api-prefix: "/api/v1"
+  game-auth-secret: "CHANGE_ME"
+  connect-timeout-ms: 10000
+  read-timeout-ms: 20000
+
+sync:
+  enabled: true
+  period-seconds: 300
+  sync-membership: true
+  sync-stats: true
+  stats-online-only: true
+
+referrals:
+  resolve-on-join: true
+  join-delay-ticks: 60
+  auto-apply-on-join: true
+  suppress-duplicate-reward-until-expiry: true
+
+reward-bundles:
+  referral_rank_3:
+    commands:
+      - "lp user %player% permission set referral.rank_3 true 30d"
+      - "eco give %player% 5000"
+  referral_rank_2:
+    commands:
+      - "lp user %player% permission set referral.rank_2 true 30d"
+      - "eco give %player% 15000"
+      - "crate key give %player% referral 2"
+  referral_rank_1:
+    commands:
+      - "lp user %player% permission set referral.rank_1 true 30d"
+      - "eco give %player% 50000"
+      - "crate key give %player% referral 5"
+      - "lp user %player% parent addtemp referralvip 30d"
+
+debug:
+  log-http: false
+  verbose-sync: false
+
+
+
+------------------------------------------------------------
+Файл: E:\voidrp_paper_gamesync_plugin\src\main\resources\data.yml
+------------------------------------------------------------
+reward-cache: {}
+nation-overrides: {}
+
+
+
+------------------------------------------------------------
+Файл: E:\voidrp_paper_gamesync_plugin\src\main\resources\nations.yml
+------------------------------------------------------------
+nations:
+  dawn:
+    title: "Kingdom of Dawn"
+    leader: "YannGotti"
+    officers:
+      - "OfficerOne"
+    members:
+      - "PlayerA"
+      - "PlayerB"
+    manual:
+      territory-points: 0
+      boss-kills: 0
+      events-completed: 0
+      prestige-bonus: 0
+
+  marineford:
+    title: "Marineford"
+    leader: "AnotherLeader"
+    officers: []
+    members: []
+    manual:
+      territory-points: 0
+      boss-kills: 0
+      events-completed: 0
+      prestige-bonus: 0
+
+
+
+------------------------------------------------------------
+Файл: E:\voidrp_paper_gamesync_plugin\src\main\resources\plugin.yml
+------------------------------------------------------------
+name: VoidRpGameSync
+version: ${version}
+main: ru.voidrp.gamesync.VoidRpGameSyncPlugin
+api-version: '1.21'
+authors: [VoidRP]
+softdepend: [Vault]
+commands:
+  vrgs:
+    description: VoidRP game sync admin command
+    usage: /vrgs
+    permission: voidrp.gamesync.admin
+permissions:
+  voidrp.gamesync.admin:
+    default: op
+
+

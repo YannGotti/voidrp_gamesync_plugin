@@ -1,0 +1,25 @@
+nations:
+  dawn:
+    title: "Kingdom of Dawn"
+    leader: "YannGotti"
+    officers:
+      - "OfficerOne"
+    members:
+      - "PlayerA"
+      - "PlayerB"
+    manual:
+      territory-points: 0
+      boss-kills: 0
+      events-completed: 0
+      prestige-bonus: 0
+
+  marineford:
+    title: "Marineford"
+    leader: "AnotherLeader"
+    officers: []
+    members: []
+    manual:
+      territory-points: 0
+      boss-kills: 0
+      events-completed: 0
+      prestige-bonus: 0

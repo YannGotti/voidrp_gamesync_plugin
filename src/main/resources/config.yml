@@ -1,0 +1,40 @@
+backend:
+  base-url: "https://api.void-rp.ru"
+  api-prefix: "/api/v1"
+  game-auth-secret: "CHANGE_ME"
+  connect-timeout-ms: 10000
+  read-timeout-ms: 20000
+
+sync:
+  enabled: true
+  period-seconds: 300
+  sync-membership: true
+  sync-stats: true
+  stats-online-only: true
+
+referrals:
+  resolve-on-join: true
+  join-delay-ticks: 60
+  auto-apply-on-join: true
+  suppress-duplicate-reward-until-expiry: true
+
+reward-bundles:
+  referral_rank_3:
+    commands:
+      - "lp user %player% permission set referral.rank_3 true 30d"
+      - "eco give %player% 5000"
+  referral_rank_2:
+    commands:
+      - "lp user %player% permission set referral.rank_2 true 30d"
+      - "eco give %player% 15000"
+      - "crate key give %player% referral 2"
+  referral_rank_1:
+    commands:
+      - "lp user %player% permission set referral.rank_1 true 30d"
+      - "eco give %player% 50000"
+      - "crate key give %player% referral 5"
+      - "lp user %player% parent addtemp referralvip 30d"
+
+debug:
+  log-http: false
+  verbose-sync: false

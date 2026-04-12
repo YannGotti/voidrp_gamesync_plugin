@@ -1,0 +1,14 @@
+name: VoidRpGameSync
+version: ${version}
+main: ru.voidrp.gamesync.VoidRpGameSyncPlugin
+api-version: '1.21'
+authors: [VoidRP]
+softdepend: [Vault]
+commands:
+  vrgs:
+    description: VoidRP game sync admin command
+    usage: /vrgs
+    permission: voidrp.gamesync.admin
+permissions:
+  voidrp.gamesync.admin:
+    default: op

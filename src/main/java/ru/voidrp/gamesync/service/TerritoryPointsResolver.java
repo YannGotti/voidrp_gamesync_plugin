@@ -1,19 +1,23 @@
 package ru.voidrp.gamesync.service;
 
-import com.sk89q.worldedit.bukkit.BukkitAdapter;
-import com.sk89q.worldguard.WorldGuard;
-import com.sk89q.worldguard.domains.DefaultDomain;
-import com.sk89q.worldguard.protection.managers.RegionManager;
-import com.sk89q.worldguard.protection.regions.ProtectedRegion;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
+
 import org.bukkit.Bukkit;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.World;
 import org.bukkit.plugin.java.JavaPlugin;
+
+import com.sk89q.worldedit.bukkit.BukkitAdapter;
+import com.sk89q.worldguard.WorldGuard;
+import com.sk89q.worldguard.domains.DefaultDomain;
+import com.sk89q.worldguard.protection.managers.RegionManager;
+import com.sk89q.worldguard.protection.regions.ProtectedRegion;
+
 import ru.voidrp.gamesync.config.GameSyncConfig;
 import ru.voidrp.gamesync.model.NationDefinition;
 import ru.voidrp.gamesync.store.PluginDataStore;
@@ -39,7 +43,7 @@ public final class TerritoryPointsResolver {
         }
 
         if (source.equalsIgnoreCase("worldguard")) {
-            Integer resolved = resolveViaWorldGuard(definition);
+            Integer resolved = resolveViaWorldGuard(definition, null);
             if (resolved != null) {
                 return resolved;
             }
@@ -57,11 +61,11 @@ public final class TerritoryPointsResolver {
         String source = config.getTerritorySourceMode();
 
         TerritoryDebugReport report = new TerritoryDebugReport(
-            definition.slug(),
-            source,
-            manualValue,
-            config.getTerritoryWorldGuardCountMode(),
-            config.isTerritoryWorldGuardFallbackToManual()
+                definition.slug(),
+                source,
+                manualValue,
+                config.getTerritoryWorldGuardCountMode(),
+                config.isTerritoryWorldGuardFallbackToManual()
         );
 
         if (source == null || source.isBlank() || source.equalsIgnoreCase("manual")) {
@@ -79,20 +83,46 @@ public final class TerritoryPointsResolver {
         if (plugin.getServer().getPluginManager().getPlugin("WorldGuard") == null) {
             report.finalValue = config.isTerritoryWorldGuardFallbackToManual() ? manualValue : 0;
             report.resolutionMode = config.isTerritoryWorldGuardFallbackToManual()
-                ? "worldguard-missing-fallback-manual"
-                : "worldguard-missing-zero";
+                    ? "worldguard-missing-fallback-manual"
+                    : "worldguard-missing-zero";
             return report;
+        }
+
+        Integer resolved = resolveViaWorldGuard(definition, report);
+        report.worldguardValue = resolved == null ? 0 : resolved;
+
+        if (resolved != null) {
+            report.finalValue = resolved;
+            report.resolutionMode = "worldguard";
+            return report;
+        }
+
+        if (config.isTerritoryWorldGuardFallbackToManual()) {
+            report.finalValue = manualValue;
+            report.resolutionMode = "worldguard-error-fallback-manual";
+            return report;
+        }
+
+        report.finalValue = 0;
+        report.resolutionMode = "worldguard-error-zero";
+        return report;
+    }
+
+    private Integer resolveViaWorldGuard(NationDefinition definition, TerritoryDebugReport debugReport) {
+        if (plugin.getServer().getPluginManager().getPlugin("WorldGuard") == null) {
+            return null;
         }
 
         Set<UUID> memberUuids = resolveMemberUuids(definition.allMembersIncludingRoles());
         Set<String> memberNames = resolveMemberNames(definition.allMembersIncludingRoles());
-        report.memberUuidsResolved = memberUuids.size();
-        report.memberNamesResolved = memberNames.size();
+
+        if (debugReport != null) {
+            debugReport.memberUuidsResolved = memberUuids.size();
+            debugReport.memberNamesResolved = memberNames.size();
+        }
 
         if (memberUuids.isEmpty() && memberNames.isEmpty()) {
-            report.finalValue = 0;
-            report.resolutionMode = "no-members";
-            return report;
+            return 0;
         }
 
         String countMode = config.getTerritoryWorldGuardCountMode();
@@ -104,17 +134,20 @@ public final class TerritoryPointsResolver {
         try {
             for (World world : Bukkit.getWorlds()) {
                 RegionManager regionManager = WorldGuard.getInstance()
-                    .getPlatform()
-                    .getRegionContainer()
-                    .get(BukkitAdapter.adapt(world));
+                        .getPlatform()
+                        .getRegionContainer()
+                        .get(BukkitAdapter.adapt(world));
 
                 if (regionManager == null) {
                     continue;
                 }
 
                 for (ProtectedRegion region : regionManager.getRegions().values()) {
-                    OwnershipMatch match = findOwnershipMatch(region.getOwners(), memberUuids, memberNames);
-                    if (!match.matched()) {
+                    MatchResult ownersMatch = findMatch(region.getOwners(), memberUuids, memberNames, "owner");
+                    MatchResult membersMatch = findMatch(region.getMembers(), memberUuids, memberNames, "member");
+
+                    MatchResult chosenMatch = ownersMatch != null ? ownersMatch : membersMatch;
+                    if (chosenMatch == null) {
                         continue;
                     }
 
@@ -129,76 +162,59 @@ public final class TerritoryPointsResolver {
                     }
 
                     total += size;
-                    report.matches.add(new TerritoryMatch(
-                        world.getName(),
-                        region.getId(),
-                        count3d ? "3d" : "2d",
-                        match.matchType(),
-                        match.matchedValue(),
-                        size
-                    ));
+
+                    if (debugReport != null) {
+                        debugReport.matches.add(
+                                new TerritoryMatch(
+                                        world.getName(),
+                                        region.getId(),
+                                        chosenMatch.matchType,
+                                        chosenMatch.matchedValue,
+                                        size,
+                                        count3d ? "3d" : "2d"
+                                )
+                        );
+                    }
                 }
             }
         } catch (Exception exception) {
-            report.error = exception.getMessage();
-            report.finalValue = config.isTerritoryWorldGuardFallbackToManual() ? manualValue : 0;
-            report.resolutionMode = config.isTerritoryWorldGuardFallbackToManual()
-                ? "worldguard-error-fallback-manual"
-                : "worldguard-error-zero";
-            return report;
-        }
-
-        report.worldguardValue = total > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) total;
-        report.finalValue = report.worldguardValue;
-        report.resolutionMode = "worldguard";
-        return report;
-    }
-
-    private Integer resolveViaWorldGuard(NationDefinition definition) {
-        TerritoryDebugReport report = buildDebugReport(definition);
-
-        if (report.resolutionMode.startsWith("worldguard-error")) {
-            plugin.getLogger().warning("Failed to calculate WorldGuard territory for " + definition.slug() + ": " + report.error);
+            plugin.getLogger().warning("Failed to calculate WorldGuard territory for " + definition.slug() + ": " + exception.getMessage());
+            if (debugReport != null) {
+                debugReport.error = exception.getMessage();
+            }
             return null;
         }
 
-        if (report.resolutionMode.equals("worldguard-missing-fallback-manual")
-            || report.resolutionMode.equals("worldguard-missing-zero")
-            || report.resolutionMode.equals("no-members")) {
-            return report.finalValue;
+        if (total > Integer.MAX_VALUE) {
+            return Integer.MAX_VALUE;
         }
-
-        if (report.resolutionMode.equals("worldguard")) {
-            return report.worldguardValue;
-        }
-
-        return report.finalValue;
+        return (int) total;
     }
 
-    private OwnershipMatch findOwnershipMatch(DefaultDomain owners, Set<UUID> memberUuids, Set<String> memberNames) {
-        if (owners == null) {
-            return OwnershipMatch.none();
+    private MatchResult findMatch(DefaultDomain domain, Set<UUID> memberUuids, Set<String> memberNames, String sourcePrefix) {
+        if (domain == null) {
+            return null;
         }
 
-        Set<UUID> ownerUuids = owners.getUniqueIds();
-        if (ownerUuids != null) {
-            for (UUID uuid : ownerUuids) {
-                if (memberUuids.contains(uuid)) {
-                    return OwnershipMatch.uuid(uuid.toString());
+        Set<UUID> uuids = domain.getUniqueIds();
+        if (uuids != null) {
+            for (UUID uuid : uuids) {
+                if (uuid != null && memberUuids.contains(uuid)) {
+                    return new MatchResult(sourcePrefix + "_uuid", uuid.toString());
                 }
             }
         }
 
-        Set<String> ownerNames = owners.getPlayers();
-        if (ownerNames != null) {
-            for (String name : ownerNames) {
+        Set<String> players = domain.getPlayers();
+        if (players != null) {
+            for (String name : players) {
                 if (name != null && memberNames.contains(name.toLowerCase(Locale.ROOT))) {
-                    return OwnershipMatch.name(name);
+                    return new MatchResult(sourcePrefix + "_name", name);
                 }
             }
         }
 
-        return OwnershipMatch.none();
+        return null;
     }
 
     private Set<UUID> resolveMemberUuids(List<String> members) {
@@ -208,9 +224,9 @@ public final class TerritoryPointsResolver {
                 continue;
             }
             try {
-                UUID uuid = Bukkit.getOfflinePlayer(nickname).getUniqueId();
-                if (uuid != null) {
-                    result.add(uuid);
+                OfflinePlayer player = Bukkit.getOfflinePlayer(nickname);
+                if (player != null && player.getUniqueId() != null) {
+                    result.add(player.getUniqueId());
                 }
             } catch (Exception exception) {
                 plugin.getLogger().warning("Failed to resolve UUID for nation member " + nickname + ": " + exception.getMessage());
@@ -261,28 +277,41 @@ public final class TerritoryPointsResolver {
         return width * height * length;
     }
 
+    private static final class MatchResult {
+
+        private final String matchType;
+        private final String matchedValue;
+
+        private MatchResult(String matchType, String matchedValue) {
+            this.matchType = matchType;
+            this.matchedValue = matchedValue;
+        }
+    }
+
     public static final class TerritoryDebugReport {
-        public final String nationSlug;
+
+        public final String slug;
         public final String source;
         public final int manualValue;
         public final String countMode;
         public final boolean fallbackToManual;
+
+        public int memberUuidsResolved = 0;
+        public int memberNamesResolved = 0;
+        public int worldguardValue = 0;
+        public int finalValue = 0;
+        public String resolutionMode = null;
+        public String error = null;
         public final List<TerritoryMatch> matches = new ArrayList<>();
-        public int memberUuidsResolved;
-        public int memberNamesResolved;
-        public int worldguardValue;
-        public int finalValue;
-        public String resolutionMode;
-        public String error;
 
         public TerritoryDebugReport(
-            String nationSlug,
-            String source,
-            int manualValue,
-            String countMode,
-            boolean fallbackToManual
+                String slug,
+                String source,
+                int manualValue,
+                String countMode,
+                boolean fallbackToManual
         ) {
-            this.nationSlug = nationSlug;
+            this.slug = slug;
             this.source = source;
             this.manualValue = manualValue;
             this.countMode = countMode;
@@ -291,25 +320,13 @@ public final class TerritoryPointsResolver {
     }
 
     public record TerritoryMatch(
-        String worldName,
-        String regionId,
-        String countMode,
-        String matchType,
-        String matchedValue,
-        long contributedArea
-    ) {}
+            String worldName,
+            String regionId,
+            String matchType,
+            String matchedValue,
+            long contributedArea,
+            String countMode
+            ) {
 
-    private record OwnershipMatch(boolean matched, String matchType, String matchedValue) {
-        static OwnershipMatch none() {
-            return new OwnershipMatch(false, null, null);
-        }
-
-        static OwnershipMatch uuid(String matchedValue) {
-            return new OwnershipMatch(true, "uuid", matchedValue);
-        }
-
-        static OwnershipMatch name(String matchedValue) {
-            return new OwnershipMatch(true, "name", matchedValue);
-        }
     }
 }

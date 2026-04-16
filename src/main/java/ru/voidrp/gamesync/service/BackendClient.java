@@ -9,14 +9,17 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 
+import org.bukkit.plugin.java.JavaPlugin;
+
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
-import org.bukkit.plugin.java.JavaPlugin;
-
 import ru.voidrp.gamesync.config.GameSyncConfig;
+import ru.voidrp.gamesync.model.GameNationDonationRequest;
 import ru.voidrp.gamesync.model.GameNationListResponse;
+import ru.voidrp.gamesync.model.GameNationTreasuryWithdrawRequest;
 import ru.voidrp.gamesync.model.NationDefinition;
+import ru.voidrp.gamesync.model.NationMemberStatsSyncRequest;
 import ru.voidrp.gamesync.model.NationStatsPayload;
 import ru.voidrp.gamesync.model.ReferralResolveResponse;
 
@@ -31,53 +34,25 @@ public final class BackendClient {
         this.plugin = plugin;
         this.config = config;
         this.httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofMillis(config.getConnectTimeoutMs()))
-            .build();
+                .connectTimeout(Duration.ofMillis(config.getConnectTimeoutMs()))
+                .build();
         this.gson = new GsonBuilder().create();
     }
 
     public GameNationListResponse fetchNationDefinitions() throws IOException, InterruptedException {
         String url = apiUrl("/game-sync/nations");
-
-        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
-            .timeout(Duration.ofMillis(config.getReadTimeoutMs()))
-            .header("X-Game-Auth-Secret", config.getGameAuthSecret())
-            .GET()
-            .build();
-
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-        if (config.isDebugHttp()) {
-            plugin.getLogger().info("[HTTP] GET " + url + " -> " + response.statusCode() + " body=" + response.body());
-        }
-
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IOException("Nation list fetch failed with status " + response.statusCode() + ": " + response.body());
-        }
-
+        HttpResponse<String> response = get(url);
         return gson.fromJson(response.body(), GameNationListResponse.class);
     }
 
     public void upsertNationStats(NationStatsPayload payload) throws IOException, InterruptedException {
         String url = apiUrl("/nation-stats/internal/upsert");
-        String json = gson.toJson(payload);
+        postJson(url, gson.toJson(payload), "Nation stats upsert failed");
+    }
 
-        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
-            .timeout(Duration.ofMillis(config.getReadTimeoutMs()))
-            .header("Content-Type", "application/json")
-            .header("X-Game-Auth-Secret", config.getGameAuthSecret())
-            .POST(HttpRequest.BodyPublishers.ofString(json))
-            .build();
-
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-        if (config.isDebugHttp()) {
-            plugin.getLogger().info("[HTTP] POST " + url + " -> " + response.statusCode() + " body=" + response.body());
-        }
-
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IOException("Nation stats upsert failed with status " + response.statusCode() + ": " + response.body());
-        }
+    public void upsertNationMemberSnapshots(NationMemberStatsSyncRequest payload) throws IOException, InterruptedException {
+        String url = apiUrl("/nation-stats/internal/member-snapshots/upsert");
+        postJson(url, gson.toJson(payload), "Nation member snapshot sync failed");
     }
 
     public void syncNationMembership(NationDefinition definition) throws IOException, InterruptedException {
@@ -85,39 +60,57 @@ public final class BackendClient {
         String url = apiUrl(path);
 
         String json = gson.toJson(new MembershipRequest(
-            definition.leader(),
-            definition.officers(),
-            definition.members(),
-            true
+                definition.leader(),
+                definition.officers(),
+                definition.members(),
+                true
         ));
 
-        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
-            .timeout(Duration.ofMillis(config.getReadTimeoutMs()))
-            .header("Content-Type", "application/json")
-            .header("X-Game-Auth-Secret", config.getGameAuthSecret())
-            .POST(HttpRequest.BodyPublishers.ofString(json))
-            .build();
+        postJson(url, json, "Nation membership sync failed");
+    }
 
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+    public void donateToNationTreasury(GameNationDonationRequest payload) throws IOException, InterruptedException {
+        String url = apiUrl("/nation-stats/internal/player-donate");
+        postJson(url, gson.toJson(payload), "Nation treasury donation failed");
+    }
 
-        if (config.isDebugHttp()) {
-            plugin.getLogger().info("[HTTP] POST " + url + " -> " + response.statusCode() + " body=" + response.body());
-        }
+    public NationTreasuryActionResponse withdrawFromNationTreasury(GameNationTreasuryWithdrawRequest payload)
+            throws IOException, InterruptedException {
 
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IOException("Nation membership sync failed with status " + response.statusCode() + ": " + response.body());
-        }
+        String url = apiUrl("/nation-stats/internal/player-withdraw");
+        HttpResponse<String> response = postJsonForResponse(
+                url,
+                gson.toJson(payload),
+                "Nation treasury withdraw failed"
+        );
+        return gson.fromJson(response.body(), NationTreasuryActionResponse.class);
+    }
+
+    public NationTreasurySummaryResponse getNationTreasurySummary(String slug) throws IOException, InterruptedException {
+        String url = apiUrl("/nation-stats/internal/nations/" + encode(slug) + "/summary");
+        HttpResponse<String> response = get(url);
+        return gson.fromJson(response.body(), NationTreasurySummaryResponse.class);
+    }
+
+    public NationTreasuryTransactionListResponse getNationTreasuryTransactions(String slug) throws IOException, InterruptedException {
+        String url = apiUrl("/nation-stats/internal/nations/" + encode(slug) + "/transactions");
+        HttpResponse<String> response = get(url);
+        return gson.fromJson(response.body(), NationTreasuryTransactionListResponse.class);
     }
 
     public ReferralResolveResponse resolveReferralReward(String minecraftNickname) throws IOException, InterruptedException {
         String path = "/game-sync/referrals/reward/" + encode(minecraftNickname);
         String url = apiUrl(path);
+        HttpResponse<String> response = get(url);
+        return gson.fromJson(response.body(), ReferralResolveResponse.class);
+    }
 
+    private HttpResponse<String> get(String url) throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder(URI.create(url))
-            .timeout(Duration.ofMillis(config.getReadTimeoutMs()))
-            .header("X-Game-Auth-Secret", config.getGameAuthSecret())
-            .GET()
-            .build();
+                .timeout(Duration.ofMillis(config.getReadTimeoutMs()))
+                .header("X-Game-Auth-Secret", config.getGameAuthSecret())
+                .GET()
+                .build();
 
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
@@ -126,14 +119,63 @@ public final class BackendClient {
         }
 
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IOException("Referral resolve failed with status " + response.statusCode() + ": " + response.body());
+            throw new IOException("GET failed with status " + response.statusCode() + ": " + response.body());
         }
 
-        return gson.fromJson(response.body(), ReferralResolveResponse.class);
+        return response;
+    }
+
+    private void postJson(String url, String json, String messagePrefix) throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofMillis(config.getReadTimeoutMs()))
+                .header("Content-Type", "application/json")
+                .header("X-Game-Auth-Secret", config.getGameAuthSecret())
+                .POST(HttpRequest.BodyPublishers.ofString(json))
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (config.isDebugHttp()) {
+            plugin.getLogger().info("[HTTP] POST " + url + " -> " + response.statusCode() + " body=" + response.body());
+        }
+
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException(messagePrefix + " with status " + response.statusCode() + ": " + response.body());
+        }
+    }
+
+    private HttpResponse<String> postJsonForResponse(String url, String json, String messagePrefix)
+            throws IOException, InterruptedException {
+
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofMillis(config.getReadTimeoutMs()))
+                .header("Content-Type", "application/json")
+                .header("X-Game-Auth-Secret", config.getGameAuthSecret())
+                .POST(HttpRequest.BodyPublishers.ofString(json))
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (config.isDebugHttp()) {
+            plugin.getLogger().info("[HTTP] POST " + url + " -> " + response.statusCode() + " body=" + response.body());
+        }
+
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException(messagePrefix + " with status " + response.statusCode() + ": " + response.body());
+        }
+
+        return response;
     }
 
     private String apiUrl(String path) {
-        return config.getBackendBaseUrl() + config.getApiPrefix() + path;
+        String prefix = config.getApiPrefix();
+        if (prefix == null || prefix.isBlank()) {
+            prefix = "";
+        }
+        if (!path.startsWith("/")) {
+            path = "/" + path;
+        }
+        return config.getBackendBaseUrl() + prefix + path;
     }
 
     private String encode(String value) {
@@ -141,9 +183,53 @@ public final class BackendClient {
     }
 
     private record MembershipRequest(
-        String leader_minecraft_nickname,
-        java.util.List<String> officers,
-        java.util.List<String> members,
-        boolean replace_missing
-    ) {}
+            String leader_minecraft_nickname,
+            java.util.List<String> officers,
+            java.util.List<String> members,
+            boolean prune_missing
+            ) {
+
+    }
+
+    public static final class NationTreasuryActionResponse {
+
+        public String message;
+        public String nation_slug;
+        public double new_treasury_balance;
+    }
+
+    public static final class NationTreasurySummaryResponse {
+
+        public String nation_id;
+        public double treasury_balance;
+        public int territory_points;
+        public int total_playtime_minutes;
+        public int pvp_kills;
+        public int mob_kills;
+        public int boss_kills;
+        public int deaths;
+        public long blocks_placed;
+        public long blocks_broken;
+        public int events_completed;
+        public int prestige_score;
+        public String updated_at;
+    }
+
+    public static final class NationTreasuryTransactionListResponse {
+
+        public int total;
+        public java.util.List<NationTreasuryTransactionItem> items;
+    }
+
+    public static final class NationTreasuryTransactionItem {
+
+        public String id;
+        public String transaction_type;
+        public double gross_amount;
+        public double fee_amount;
+        public double net_amount;
+        public String comment;
+        public java.util.Map<String, Object> metadata_json;
+        public String created_at;
+    }
 }

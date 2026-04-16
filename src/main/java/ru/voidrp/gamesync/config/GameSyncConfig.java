@@ -1,7 +1,5 @@
 package ru.voidrp.gamesync.config;
 
-import java.util.Collections;
-import java.util.List;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -42,8 +40,10 @@ public final class GameSyncConfig {
     private final boolean debugHttp;
     private final boolean verboseSync;
     private final ConfigurationSection rewardBundlesSection;
+    private final JavaPlugin plugin;
 
     public GameSyncConfig(JavaPlugin plugin) {
+        this.plugin = plugin;
         this.backendBaseUrl = trimTrailingSlash(plugin.getConfig().getString("backend.base-url", "https://api.void-rp.ru"));
         this.apiPrefix = plugin.getConfig().getString("backend.api-prefix", "/api/v1");
         this.gameAuthSecret = plugin.getConfig().getString("backend.game-auth-secret", "");
@@ -57,7 +57,7 @@ public final class GameSyncConfig {
         this.syncPeriodTicks = Math.max(20L, plugin.getConfig().getLong("sync.period-seconds", 300L) * 20L);
         this.syncMembership = plugin.getConfig().getBoolean("sync.sync-membership", true);
         this.syncStats = plugin.getConfig().getBoolean("sync.sync-stats", true);
-        this.statsOnlineOnly = plugin.getConfig().getBoolean("sync.stats-online-only", true);
+        this.statsOnlineOnly = plugin.getConfig().getBoolean("sync.stats-online-only", false);
 
         this.territorySourceMode = plugin.getConfig().getString("territory.source", "manual");
         this.territoryWorldGuardCountMode = plugin.getConfig().getString("territory.worldguard.count-mode", "2d");
@@ -88,56 +88,190 @@ public final class GameSyncConfig {
         this.rewardBundlesSection = plugin.getConfig().getConfigurationSection("reward-bundles");
     }
 
-    public String getBackendBaseUrl() { return backendBaseUrl; }
-    public String getApiPrefix() { return apiPrefix; }
-    public String getGameAuthSecret() { return gameAuthSecret; }
-    public int getConnectTimeoutMs() { return connectTimeoutMs; }
-    public int getReadTimeoutMs() { return readTimeoutMs; }
-    public boolean isBackendNationSourceEnabled() { return backendNationSourceEnabled; }
-    public boolean isFallbackYmlEnabled() { return fallbackYmlEnabled; }
-    public boolean isSyncEnabled() { return syncEnabled; }
-    public long getSyncPeriodTicks() { return syncPeriodTicks; }
-    public boolean isSyncMembership() { return syncMembership; }
-    public boolean isSyncStats() { return syncStats; }
-    public boolean isStatsOnlineOnly() { return statsOnlineOnly; }
-    public String getTerritorySourceMode() { return territorySourceMode; }
-    public String getTerritoryWorldGuardCountMode() { return territoryWorldGuardCountMode; }
-    public boolean isTerritoryWorldGuardFallbackToManual() { return territoryWorldGuardFallbackToManual; }
-    public boolean isResolveOnJoin() { return resolveOnJoin; }
-    public long getJoinDelayTicks() { return joinDelayTicks; }
-    public boolean isAutoApplyOnJoin() { return autoApplyOnJoin; }
-    public boolean isSuppressDuplicateRewardUntilExpiry() { return suppressDuplicateRewardUntilExpiry; }
-    public boolean isLuckPermsEnabled() { return luckPermsEnabled; }
-    public boolean isApplyNationMetaOnJoin() { return applyNationMetaOnJoin; }
-    public boolean isReconcileNationMetaAfterSync() { return reconcileNationMetaAfterSync; }
-    public String getLuckPermsServerContext() { return luckPermsServerContext; }
-    public boolean isPrefixEnabled() { return prefixEnabled; }
-    public int getPrefixPriority() { return prefixPriority; }
-    public String getPrefixTemplate() { return prefixTemplate; }
-    public boolean isSuffixEnabled() { return suffixEnabled; }
-    public int getSuffixPriority() { return suffixPriority; }
-    public String getSuffixTemplate() { return suffixTemplate; }
-    public boolean isDebugHttp() { return debugHttp; }
-    public boolean isVerboseSync() { return verboseSync; }
+    public String getBackendBaseUrl() {
+        return backendBaseUrl;
+    }
 
-    public List<String> getRewardCommands(String bundleKey) {
-        if (rewardBundlesSection == null) return Collections.emptyList();
-        ConfigurationSection section = rewardBundlesSection.getConfigurationSection(bundleKey);
-        if (section == null) return Collections.emptyList();
-        return section.getStringList("commands");
+    public String getApiPrefix() {
+        return apiPrefix;
+    }
+
+    public String getGameAuthSecret() {
+        return gameAuthSecret;
+    }
+
+    public int getConnectTimeoutMs() {
+        return connectTimeoutMs;
+    }
+
+    public int getReadTimeoutMs() {
+        return readTimeoutMs;
+    }
+
+    public boolean isBackendNationSourceEnabled() {
+        return backendNationSourceEnabled;
+    }
+
+    public boolean isFallbackYmlEnabled() {
+        return fallbackYmlEnabled;
+    }
+
+    public boolean isSyncEnabled() {
+        return syncEnabled;
+    }
+
+    public long getSyncPeriodTicks() {
+        return syncPeriodTicks;
+    }
+
+    public boolean isSyncMembership() {
+        return syncMembership;
+    }
+
+    public boolean isSyncStats() {
+        return syncStats;
+    }
+
+    public boolean isStatsOnlineOnly() {
+        return statsOnlineOnly;
+    }
+
+    public String getTerritorySourceMode() {
+        return territorySourceMode;
+    }
+
+    public String getTerritoryWorldGuardCountMode() {
+        return territoryWorldGuardCountMode;
+    }
+
+    public boolean isTerritoryWorldGuardFallbackToManual() {
+        return territoryWorldGuardFallbackToManual;
+    }
+
+    public boolean isResolveOnJoin() {
+        return resolveOnJoin;
+    }
+
+    public long getJoinDelayTicks() {
+        return joinDelayTicks;
+    }
+
+    public boolean isAutoApplyOnJoin() {
+        return autoApplyOnJoin;
+    }
+
+    public boolean isSuppressDuplicateRewardUntilExpiry() {
+        return suppressDuplicateRewardUntilExpiry;
+    }
+
+    public boolean isLuckPermsEnabled() {
+        return luckPermsEnabled;
+    }
+
+    public boolean isApplyNationMetaOnJoin() {
+        return applyNationMetaOnJoin;
+    }
+
+    public boolean isReconcileNationMetaAfterSync() {
+        return reconcileNationMetaAfterSync;
+    }
+
+    public String getLuckPermsServerContext() {
+        return luckPermsServerContext;
+    }
+
+    public boolean isPrefixEnabled() {
+        return prefixEnabled;
+    }
+
+    public int getPrefixPriority() {
+        return prefixPriority;
+    }
+
+    public String getPrefixTemplate() {
+        return prefixTemplate;
+    }
+
+    public boolean isSuffixEnabled() {
+        return suffixEnabled;
+    }
+
+    public int getSuffixPriority() {
+        return suffixPriority;
+    }
+
+    public String getSuffixTemplate() {
+        return suffixTemplate;
+    }
+
+    public String getLeaderLabel() {
+        return leaderLabel;
+    }
+
+    public String getOfficerLabel() {
+        return officerLabel;
+    }
+
+    public String getMemberLabel() {
+        return memberLabel;
+    }
+
+    public boolean isDebugHttp() {
+        return debugHttp;
+    }
+
+    public boolean isVerboseSync() {
+        return verboseSync;
+    }
+
+    public ConfigurationSection getRewardBundlesSection() {
+        return rewardBundlesSection;
+    }
+
+    public java.util.List<String> getRewardCommands(String bundleKey) {
+        if (bundleKey == null || bundleKey.isBlank()) {
+            return java.util.List.of();
+        }
+
+        String path = "reward-bundles." + bundleKey + ".commands";
+        java.util.List<String> commands = plugin.getConfig().getStringList(path);
+        if (commands == null || commands.isEmpty()) {
+            return java.util.List.of();
+        }
+        return java.util.List.copyOf(commands);
     }
 
     public String roleDisplay(String role) {
-        if (role == null) return memberLabel;
-        return switch (role.toLowerCase()) {
-            case "leader" -> leaderLabel;
-            case "officer" -> officerLabel;
-            default -> memberLabel;
+        if (role == null || role.isBlank()) {
+            return "Участник";
+        }
+
+        String normalized = role.trim().toLowerCase(java.util.Locale.ROOT);
+        String configured = plugin.getConfig().getString("luckperms.role-labels." + normalized);
+        if (configured != null && !configured.isBlank()) {
+            return configured;
+        }
+
+        return switch (normalized) {
+            case "leader" ->
+                "Лидер";
+            case "officer" ->
+                "Офицер";
+            case "member" ->
+                "Участник";
+            default ->
+                role;
         };
     }
 
     private String trimTrailingSlash(String value) {
-        if (value == null || value.isBlank()) return "";
-        return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String result = value.trim();
+        while (result.endsWith("/")) {
+            result = result.substring(0, result.length() - 1);
+        }
+        return result;
     }
 }

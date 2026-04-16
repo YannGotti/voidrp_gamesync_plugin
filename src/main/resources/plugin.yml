@@ -1,14 +1,49 @@
 name: VoidRpGameSync
-version: ${version}
+version: 1.0.0
 main: ru.voidrp.gamesync.VoidRpGameSyncPlugin
-api-version: '1.21'
-authors: [VoidRP]
-softdepend: [Vault, LuckPerms, PlaceholderAPI, WorldGuard]
+api-version: "1.21"
+depend:
+  - Vault
+softdepend:
+  - LuckPerms
+  - WorldGuard
+
 commands:
   vrgs:
-    description: VoidRP game sync admin command
+    description: VoidRP GameSync admin command
     usage: /vrgs
     permission: voidrp.gamesync.admin
+  nationdonate:
+    description: Donate your money to your nation treasury
+    usage: /nationdonate <amount> [comment]
+    permission: voidrp.gamesync.donate
+    aliases: [ndonate]
+  nationtreasury:
+    description: Show current nation treasury summary
+    usage: /nationtreasury
+    permission: voidrp.gamesync.treasury.view
+    aliases: [ntreasury]
+  nationtreasuryhistory:
+    description: Show recent nation treasury history
+    usage: /nationtreasuryhistory
+    permission: voidrp.gamesync.treasury.view
+    aliases: [ntreasuryhistory]
+  nationwithdraw:
+    description: Withdraw helper for leader/officer
+    usage: /nationwithdraw <amount> [comment]
+    permission: voidrp.gamesync.treasury.manage
+    aliases: [nwithdraw]
+
 permissions:
   voidrp.gamesync.admin:
+    description: Admin access to VoidRP GameSync
     default: op
+  voidrp.gamesync.donate:
+    description: Allow player to donate to nation treasury
+    default: true
+  voidrp.gamesync.treasury.view:
+    description: Allow player to view nation treasury
+    default: true
+  voidrp.gamesync.treasury.manage:
+    description: Allow leader/officer treasury manage helper commands
+    default: true

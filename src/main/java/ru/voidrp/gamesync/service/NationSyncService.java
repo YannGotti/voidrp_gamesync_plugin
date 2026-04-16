@@ -1,19 +1,28 @@
 package ru.voidrp.gamesync.service;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
-
+import java.util.UUID;
+import net.milkbowl.vault.economy.Economy;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.Statistic;
+import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
-
-import net.milkbowl.vault.economy.Economy;
 import ru.voidrp.gamesync.config.GameSyncConfig;
 import ru.voidrp.gamesync.config.NationRegistry;
 import ru.voidrp.gamesync.model.NationDefinition;
-import ru.voidrp.gamesync.model.NationStatsPayload;
+import ru.voidrp.gamesync.model.NationMemberStatsSyncRequest;
+import ru.voidrp.gamesync.model.PlayerStatSnapshot;
 import ru.voidrp.gamesync.store.PluginDataStore;
 
 public final class NationSyncService {
@@ -22,6 +31,7 @@ public final class NationSyncService {
     private final BackendClient backendClient;
     private final NationRegistry registry;
     private final PluginDataStore dataStore;
+    @SuppressWarnings("unused")
     private final Economy economy;
     private final GameSyncConfig config;
     private final TerritoryPointsResolver territoryPointsResolver;
@@ -67,10 +77,11 @@ public final class NationSyncService {
             }
 
             if (config.isSyncStats()) {
-                NationStatsPayload payload = buildStatsPayload(definition);
-                backendClient.upsertNationStats(payload);
+                NationMemberStatsSyncRequest payload = buildMemberStatsSyncRequest(definition);
+                backendClient.upsertNationMemberSnapshots(payload);
+                dataStore.saveNow();
                 if (config.isVerboseSync()) {
-                    plugin.getLogger().info("Stats synced for nation " + definition.slug());
+                    plugin.getLogger().info("Member snapshots synced for nation " + definition.slug());
                 }
             }
         } catch (IOException | InterruptedException exception) {
@@ -81,36 +92,28 @@ public final class NationSyncService {
         }
     }
 
-    public NationStatsPayload buildStatsPayload(NationDefinition definition) {
-        double treasury = 0D;
-        int playtimeMinutes = 0;
-        int pvpKills = 0;
-        int mobKills = 0;
-        int deaths = 0;
-        long blocksPlaced = 0L;
-        long blocksBroken = 0L;
+    public NationMemberStatsSyncRequest buildMemberStatsSyncRequest(NationDefinition definition) {
+        List<PlayerStatSnapshot> snapshots = new ArrayList<>();
 
-        List<String> allMembers = definition.allMembersIncludingRoles();
-
-        for (String nickname : allMembers) {
-            OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(nickname);
-
-            if (economy != null) {
-                try {
-                    treasury += economy.getBalance(offlinePlayer);
-                } catch (Throwable ignored) {
-                }
-            }
-
-            Player onlinePlayer = Bukkit.getPlayerExact(nickname);
-            if (onlinePlayer == null) {
+        for (String nickname : definition.allMembersIncludingRoles()) {
+            if (nickname == null || nickname.isBlank()) {
                 continue;
             }
 
-            try { playtimeMinutes += onlinePlayer.getStatistic(Statistic.PLAY_ONE_MINUTE) / (20 * 60); } catch (Exception ignored) {}
-            try { pvpKills += onlinePlayer.getStatistic(Statistic.PLAYER_KILLS); } catch (Exception ignored) {}
-            try { mobKills += onlinePlayer.getStatistic(Statistic.MOB_KILLS); } catch (Exception ignored) {}
-            try { deaths += onlinePlayer.getStatistic(Statistic.DEATHS); } catch (Exception ignored) {}
+            OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(nickname);
+            if (offlinePlayer == null) {
+                continue;
+            }
+
+            UUID uuid = offlinePlayer.getUniqueId();
+            if (uuid == null) {
+                continue;
+            }
+
+            PlayerStatSnapshot snapshot = resolveBestSnapshot(offlinePlayer, nickname);
+            if (snapshot != null) {
+                snapshots.add(snapshot);
+            }
         }
 
         int territoryPoints = territoryPointsResolver.resolve(definition);
@@ -118,34 +121,301 @@ public final class NationSyncService {
         int eventsCompleted = definition.eventsCompleted() + dataStore.getNationOverride(definition.slug(), "events");
         int prestigeBonus = definition.prestigeBonus() + dataStore.getNationOverride(definition.slug(), "prestige");
 
-        int prestigeScore = (int) Math.round(
-            treasury * 0.002
-                + territoryPoints * 15
-                + playtimeMinutes * 0.05
-                + pvpKills * 8
-                + mobKills * 0.2
-                + bossKills * 25
-                + eventsCompleted * 20
-                + prestigeBonus
-        );
-
-        return new NationStatsPayload(
+        return new NationMemberStatsSyncRequest(
             definition.slug(),
-            round2(treasury),
             territoryPoints,
-            playtimeMinutes,
-            pvpKills,
-            mobKills,
             bossKills,
-            deaths,
-            blocksPlaced,
-            blocksBroken,
             eventsCompleted,
-            prestigeScore
+            prestigeBonus,
+            snapshots
         );
     }
 
-    private double round2(double value) {
-        return Math.round(value * 100.0D) / 100.0D;
+    private PlayerStatSnapshot resolveBestSnapshot(OfflinePlayer offlinePlayer, String nickname) {
+        UUID uuid = offlinePlayer.getUniqueId();
+        if (uuid == null) {
+            return null;
+        }
+
+        PlayerStatSnapshot live = readLiveSnapshot(offlinePlayer, nickname);
+        if (live != null) {
+            dataStore.setPlayerStatSnapshot(uuid, live);
+            return live;
+        }
+
+        PlayerStatSnapshot fromFile = readFileSnapshot(offlinePlayer, nickname);
+        if (fromFile != null) {
+            dataStore.setPlayerStatSnapshot(uuid, fromFile);
+            return fromFile;
+        }
+
+        PlayerStatSnapshot cached = dataStore.getPlayerStatSnapshot(uuid);
+        if (cached != null) {
+            return new PlayerStatSnapshot(
+                nickname,
+                cached.totalPlaytimeMinutes(),
+                cached.pvpKills(),
+                cached.mobKills(),
+                cached.deaths(),
+                cached.blocksPlaced(),
+                cached.blocksBroken(),
+                "cached",
+                cached.lastSeenAt()
+            );
+        }
+
+        if (config.isVerboseSync()) {
+            plugin.getLogger().warning("No stat source available for " + nickname + " (" + uuid + ")");
+        }
+
+        return new PlayerStatSnapshot(
+            nickname,
+            0,
+            0,
+            0,
+            0,
+            0L,
+            0L,
+            "missing",
+            null
+        );
+    }
+
+    private PlayerStatSnapshot readLiveSnapshot(OfflinePlayer offlinePlayer, String nickname) {
+        Player onlinePlayer = Bukkit.getPlayer(offlinePlayer.getUniqueId());
+        if (onlinePlayer == null) {
+            return null;
+        }
+
+        int playtimeMinutes = ticksToMinutes(safeGetStatistic(onlinePlayer, Statistic.PLAY_ONE_MINUTE));
+        int pvpKills = safeGetStatistic(onlinePlayer, Statistic.PLAYER_KILLS);
+        int mobKills = safeGetStatistic(onlinePlayer, Statistic.MOB_KILLS);
+        int deaths = safeGetStatistic(onlinePlayer, Statistic.DEATHS);
+        long blocksBroken = sumMineBlockStats(onlinePlayer);
+        long blocksPlaced = sumUsedBlockItems(onlinePlayer);
+
+        return new PlayerStatSnapshot(
+            nickname,
+            playtimeMinutes,
+            pvpKills,
+            mobKills,
+            deaths,
+            blocksPlaced,
+            blocksBroken,
+            "live",
+            Instant.now().toString()
+        );
+    }
+
+    private PlayerStatSnapshot readFileSnapshot(OfflinePlayer offlinePlayer, String nickname) {
+        if (config.isStatsOnlineOnly()) {
+            return null;
+        }
+
+        JsonObject root = readStatsFile(offlinePlayer.getUniqueId());
+        if (root == null) {
+            return null;
+        }
+
+        int playtimeMinutes = ticksToMinutes(readCustomStatFromRoot(root, "minecraft:play_time"));
+        int pvpKills = readCustomStatFromRoot(root, "minecraft:player_kills");
+        int mobKills = readCustomStatFromRoot(root, "minecraft:mob_kills");
+        int deaths = readCustomStatFromRoot(root, "minecraft:deaths");
+        long blocksBroken = readCategorySumFromRoot(root, "minecraft:mined");
+        long blocksPlaced = readPlacedBlocksEstimateFromRoot(root);
+
+        String lastSeenAt = null;
+        if (offlinePlayer.getLastPlayed() > 0L) {
+            lastSeenAt = Instant.ofEpochMilli(offlinePlayer.getLastPlayed()).toString();
+        }
+
+        return new PlayerStatSnapshot(
+            nickname,
+            playtimeMinutes,
+            pvpKills,
+            mobKills,
+            deaths,
+            blocksPlaced,
+            blocksBroken,
+            "stats_file",
+            lastSeenAt
+        );
+    }
+
+    private int safeGetStatistic(Player player, Statistic statistic) {
+        try {
+            return player.getStatistic(statistic);
+        } catch (Exception ignored) {
+            return 0;
+        }
+    }
+
+    private long sumMineBlockStats(Player player) {
+        long total = 0L;
+        for (org.bukkit.Material material : org.bukkit.Material.values()) {
+            if (!material.isBlock()) {
+                continue;
+            }
+            try {
+                total += player.getStatistic(Statistic.MINE_BLOCK, material);
+            } catch (Exception ignored) {
+            }
+        }
+        return total;
+    }
+
+    private long sumUsedBlockItems(Player player) {
+        long total = 0L;
+        for (org.bukkit.Material material : org.bukkit.Material.values()) {
+            if (!material.isBlock()) {
+                continue;
+            }
+            try {
+                total += player.getStatistic(Statistic.USE_ITEM, material);
+            } catch (Exception ignored) {
+            }
+        }
+        return total;
+    }
+
+    private int ticksToMinutes(int ticks) {
+        return ticks <= 0 ? 0 : ticks / (20 * 60);
+    }
+
+    private int readCustomStatFromRoot(JsonObject root, String statKey) {
+        JsonObject statsObject = getObject(root, "stats");
+        if (statsObject == null) {
+            return 0;
+        }
+
+        JsonObject customObject = getObject(statsObject, "minecraft:custom");
+        if (customObject == null) {
+            return 0;
+        }
+
+        JsonElement statElement = customObject.get(statKey);
+        if (statElement == null || !statElement.isJsonPrimitive()) {
+            return 0;
+        }
+
+        try {
+            return statElement.getAsInt();
+        } catch (Exception ignored) {
+            return 0;
+        }
+    }
+
+    private long readCategorySumFromRoot(JsonObject root, String categoryKey) {
+        JsonObject statsObject = getObject(root, "stats");
+        if (statsObject == null) {
+            return 0L;
+        }
+
+        JsonObject categoryObject = getObject(statsObject, categoryKey);
+        if (categoryObject == null) {
+            return 0L;
+        }
+
+        long total = 0L;
+        for (String key : categoryObject.keySet()) {
+            JsonElement value = categoryObject.get(key);
+            if (value != null && value.isJsonPrimitive()) {
+                try {
+                    total += value.getAsLong();
+                } catch (Exception ignored) {
+                }
+            }
+        }
+        return total;
+    }
+
+    private long readPlacedBlocksEstimateFromRoot(JsonObject root) {
+        JsonObject statsObject = getObject(root, "stats");
+        if (statsObject == null) {
+            return 0L;
+        }
+
+        JsonObject usedObject = getObject(statsObject, "minecraft:used");
+        if (usedObject == null) {
+            return 0L;
+        }
+
+        long total = 0L;
+        for (String key : usedObject.keySet()) {
+            if (!isLikelyPlaceableBlockKey(key)) {
+                continue;
+            }
+            JsonElement value = usedObject.get(key);
+            if (value != null && value.isJsonPrimitive()) {
+                try {
+                    total += value.getAsLong();
+                } catch (Exception ignored) {
+                }
+            }
+        }
+        return total;
+    }
+
+    private boolean isLikelyPlaceableBlockKey(String key) {
+        if (key == null || key.isBlank()) {
+            return false;
+        }
+
+        return !key.contains("sword")
+            && !key.contains("pickaxe")
+            && !key.contains("axe")
+            && !key.contains("shovel")
+            && !key.contains("hoe")
+            && !key.contains("bow")
+            && !key.contains("crossbow")
+            && !key.contains("shield")
+            && !key.contains("bucket")
+            && !key.contains("potion")
+            && !key.contains("helmet")
+            && !key.contains("chestplate")
+            && !key.contains("leggings")
+            && !key.contains("boots");
+    }
+
+    private JsonObject readStatsFile(UUID uuid) {
+        try {
+            Path path = resolveStatsFile(uuid);
+            if (path == null || !Files.exists(path)) {
+                return null;
+            }
+
+            String content = Files.readString(path, StandardCharsets.UTF_8);
+            JsonElement parsed = JsonParser.parseString(content);
+            if (!parsed.isJsonObject()) {
+                return null;
+            }
+            return parsed.getAsJsonObject();
+        } catch (Exception exception) {
+            if (config.isVerboseSync()) {
+                plugin.getLogger().warning("Failed to read stats file for " + uuid + ": " + exception.getMessage());
+            }
+            return null;
+        }
+    }
+
+    private Path resolveStatsFile(UUID uuid) {
+        List<World> worlds = Bukkit.getWorlds();
+        if (worlds.isEmpty()) {
+            return null;
+        }
+
+        Path primaryWorldPath = worlds.get(0).getWorldFolder().toPath();
+        return primaryWorldPath.resolve("stats").resolve(uuid.toString() + ".json");
+    }
+
+    private JsonObject getObject(JsonObject parent, String key) {
+        if (parent == null) {
+            return null;
+        }
+        JsonElement value = parent.get(key);
+        if (value == null || !value.isJsonObject()) {
+            return null;
+        }
+        return value.getAsJsonObject();
     }
 }

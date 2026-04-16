@@ -14,7 +14,7 @@ sync:
   period-seconds: 300
   sync-membership: true
   sync-stats: true
-  stats-online-only: true
+  stats-online-only: false
 
 territory:
   source: "worldguard"
@@ -68,4 +68,4 @@ reward-bundles:
 
 debug:
   log-http: false
-  verbose-sync: false
+  verbose-sync: true

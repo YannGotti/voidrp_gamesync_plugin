@@ -7,6 +7,8 @@ import java.util.UUID;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import ru.voidrp.gamesync.model.PlayerStatSnapshot;
+
 public final class PluginDataStore {
 
     private final JavaPlugin plugin;
@@ -65,6 +67,42 @@ public final class PluginDataStore {
 
     public void clearNationMeta(UUID playerId) {
         yaml.set("nation-meta-cache." + playerId, null);
+    }
+
+    public PlayerStatSnapshot getPlayerStatSnapshot(UUID playerId) {
+        String base = "player-stats-cache." + playerId;
+        if (!yaml.contains(base)) {
+            return null;
+        }
+
+        return new PlayerStatSnapshot(
+            yaml.getString(base + ".minecraft-nickname", ""),
+            yaml.getInt(base + ".total-playtime-minutes", 0),
+            yaml.getInt(base + ".pvp-kills", 0),
+            yaml.getInt(base + ".mob-kills", 0),
+            yaml.getInt(base + ".deaths", 0),
+            yaml.getLong(base + ".blocks-placed", 0L),
+            yaml.getLong(base + ".blocks-broken", 0L),
+            yaml.getString(base + ".source", "cached"),
+            yaml.getString(base + ".last-seen-at", null)
+        );
+    }
+
+    public void setPlayerStatSnapshot(UUID playerId, PlayerStatSnapshot snapshot) {
+        String base = "player-stats-cache." + playerId;
+        yaml.set(base + ".minecraft-nickname", snapshot.minecraftNickname());
+        yaml.set(base + ".total-playtime-minutes", snapshot.totalPlaytimeMinutes());
+        yaml.set(base + ".pvp-kills", snapshot.pvpKills());
+        yaml.set(base + ".mob-kills", snapshot.mobKills());
+        yaml.set(base + ".deaths", snapshot.deaths());
+        yaml.set(base + ".blocks-placed", snapshot.blocksPlaced());
+        yaml.set(base + ".blocks-broken", snapshot.blocksBroken());
+        yaml.set(base + ".source", snapshot.source());
+        yaml.set(base + ".last-seen-at", snapshot.lastSeenAt());
+    }
+
+    public void clearPlayerStatSnapshot(UUID playerId) {
+        yaml.set("player-stats-cache." + playerId, null);
     }
 
     public void saveNow() {

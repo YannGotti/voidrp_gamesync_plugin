@@ -31,7 +31,6 @@ public final class NationSyncService {
     private final BackendClient backendClient;
     private final NationRegistry registry;
     private final PluginDataStore dataStore;
-    @SuppressWarnings("unused")
     private final Economy economy;
     private final GameSyncConfig config;
     private final TerritoryPointsResolver territoryPointsResolver;
@@ -159,6 +158,7 @@ public final class NationSyncService {
                 cached.deaths(),
                 cached.blocksPlaced(),
                 cached.blocksBroken(),
+                cached.currentBalance(),
                 "cached",
                 cached.lastSeenAt()
             );
@@ -176,6 +176,7 @@ public final class NationSyncService {
             0,
             0L,
             0L,
+            0D,
             "missing",
             null
         );
@@ -193,6 +194,7 @@ public final class NationSyncService {
         int deaths = safeGetStatistic(onlinePlayer, Statistic.DEATHS);
         long blocksBroken = sumMineBlockStats(onlinePlayer);
         long blocksPlaced = sumUsedBlockItems(onlinePlayer);
+        double currentBalance = resolveCurrentBalance(offlinePlayer);
 
         return new PlayerStatSnapshot(
             nickname,
@@ -202,6 +204,7 @@ public final class NationSyncService {
             deaths,
             blocksPlaced,
             blocksBroken,
+            currentBalance,
             "live",
             Instant.now().toString()
         );
@@ -223,6 +226,7 @@ public final class NationSyncService {
         int deaths = readCustomStatFromRoot(root, "minecraft:deaths");
         long blocksBroken = readCategorySumFromRoot(root, "minecraft:mined");
         long blocksPlaced = readPlacedBlocksEstimateFromRoot(root);
+        double currentBalance = resolveCurrentBalance(offlinePlayer);
 
         String lastSeenAt = null;
         if (offlinePlayer.getLastPlayed() > 0L) {
@@ -237,9 +241,33 @@ public final class NationSyncService {
             deaths,
             blocksPlaced,
             blocksBroken,
+            currentBalance,
             "stats_file",
             lastSeenAt
         );
+    }
+
+    private double resolveCurrentBalance(OfflinePlayer offlinePlayer) {
+        if (economy == null || offlinePlayer == null) {
+            return 0D;
+        }
+
+        try {
+            return round2(economy.getBalance(offlinePlayer));
+        } catch (Exception ignored) {
+            Player player = Bukkit.getPlayer(offlinePlayer.getUniqueId());
+            if (player != null) {
+                try {
+                    return round2(economy.getBalance(player));
+                } catch (Exception ignoredAgain) {
+                }
+            }
+            return 0D;
+        }
+    }
+
+    private double round2(double value) {
+        return Math.round(value * 100.0D) / 100.0D;
     }
 
     private int safeGetStatistic(Player player, Statistic statistic) {
@@ -419,3 +447,5 @@ public final class NationSyncService {
         return value.getAsJsonObject();
     }
 }
+
+

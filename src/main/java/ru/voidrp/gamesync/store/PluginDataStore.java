@@ -83,6 +83,7 @@ public final class PluginDataStore {
             yaml.getInt(base + ".deaths", 0),
             yaml.getLong(base + ".blocks-placed", 0L),
             yaml.getLong(base + ".blocks-broken", 0L),
+            yaml.getDouble(base + ".current-balance", 0D),
             yaml.getString(base + ".source", "cached"),
             yaml.getString(base + ".last-seen-at", null)
         );
@@ -97,6 +98,7 @@ public final class PluginDataStore {
         yaml.set(base + ".deaths", snapshot.deaths());
         yaml.set(base + ".blocks-placed", snapshot.blocksPlaced());
         yaml.set(base + ".blocks-broken", snapshot.blocksBroken());
+        yaml.set(base + ".current-balance", snapshot.currentBalance());
         yaml.set(base + ".source", snapshot.source());
         yaml.set(base + ".last-seen-at", snapshot.lastSeenAt());
     }
@@ -113,3 +115,5 @@ public final class PluginDataStore {
         }
     }
 }
+
+

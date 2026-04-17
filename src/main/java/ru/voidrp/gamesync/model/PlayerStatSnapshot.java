@@ -10,6 +10,9 @@ public record PlayerStatSnapshot(
     @SerializedName("deaths") int deaths,
     @SerializedName("blocks_placed") long blocksPlaced,
     @SerializedName("blocks_broken") long blocksBroken,
+    @SerializedName("current_balance") double currentBalance,
     @SerializedName("source") String source,
     @SerializedName("last_seen_at") String lastSeenAt
 ) {}
+
+

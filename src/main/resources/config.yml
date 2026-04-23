@@ -46,6 +46,12 @@ luckperms:
     officer: "Офицер"
     member: "Участник"
 
+skins:
+  enabled: true
+  apply-on-join: true
+  join-delay-ticks: 100
+  clear-when-missing: true
+
 reward-bundles:
   referral_rank_3:
     commands:

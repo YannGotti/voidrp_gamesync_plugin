@@ -21,6 +21,7 @@ import ru.voidrp.gamesync.service.LuckPermsNationMetaService;
 import ru.voidrp.gamesync.service.NationSyncService;
 import ru.voidrp.gamesync.service.ReferralRewardService;
 import ru.voidrp.gamesync.service.RewardCacheService;
+import ru.voidrp.gamesync.service.SkinCommandService;
 import ru.voidrp.gamesync.service.SyncScheduler;
 import ru.voidrp.gamesync.service.TerritoryPointsResolver;
 import ru.voidrp.gamesync.store.PluginDataStore;
@@ -37,6 +38,7 @@ public final class VoidRpGameSyncPlugin extends JavaPlugin {
     private TerritoryPointsResolver territoryPointsResolver;
     private NationSyncService nationSyncService;
     private SyncScheduler syncScheduler;
+    private SkinCommandService skinCommandService;
     private Economy economy;
 
     @Override
@@ -75,12 +77,17 @@ public final class VoidRpGameSyncPlugin extends JavaPlugin {
                 luckPermsNationMetaService,
                 gameSyncConfig
         );
+        this.skinCommandService = new SkinCommandService(this);
 
         registerCommands();
         registerListeners();
 
         if (gameSyncConfig.isSyncEnabled()) {
             syncScheduler.start();
+        }
+
+        if (gameSyncConfig.isSkinSyncEnabled() && !skinCommandService.isAvailable()) {
+            getLogger().warning("SkinsRestorer not found. Skin synchronization is enabled in config, but applying skins will be skipped.");
         }
 
         getLogger().info("VoidRpGameSync enabled.");
@@ -120,6 +127,7 @@ public final class VoidRpGameSyncPlugin extends JavaPlugin {
                 gameSyncConfig,
                 territoryPointsResolver
         );
+        this.skinCommandService = new SkinCommandService(this);
 
         if (this.syncScheduler != null) {
             this.syncScheduler.stop();
@@ -138,58 +146,35 @@ public final class VoidRpGameSyncPlugin extends JavaPlugin {
     }
 
     private void registerCommands() {
-        VoidRpAdminCommand adminCommand = new VoidRpAdminCommand(this);
-        registerCommand("vrgs", adminCommand, adminCommand);
-
-        PlayerNationDonateCommand donateCommand = new PlayerNationDonateCommand(this);
-        registerCommand("nationdonate", donateCommand, donateCommand);
-        registerCommand("ndonate", donateCommand, donateCommand);
-
-        PlayerNationTreasuryCommand treasuryCommand = new PlayerNationTreasuryCommand(this);
-        registerCommand("nationtreasury", treasuryCommand, treasuryCommand);
-        registerCommand("ntreasury", treasuryCommand, treasuryCommand);
-
-        PlayerNationTreasuryHistoryCommand treasuryHistoryCommand = new PlayerNationTreasuryHistoryCommand(this);
-        registerCommand("nationtreasuryhistory", treasuryHistoryCommand, treasuryHistoryCommand);
-        registerCommand("ntreasuryhistory", treasuryHistoryCommand, treasuryHistoryCommand);
-
-        PlayerNationWithdrawCommand withdrawCommand = new PlayerNationWithdrawCommand(this);
-        registerCommand("nationwithdraw", withdrawCommand, withdrawCommand);
-        registerCommand("nwithdraw", withdrawCommand, withdrawCommand);
-    }
-
-    private void registerCommand(String name, CommandExecutor executor, TabCompleter completer) {
-        PluginCommand command = getCommand(name);
-        if (command != null) {
-            command.setExecutor(executor);
-            command.setTabCompleter(completer);
-        }
+        bindCommand("vrgs", new VoidRpAdminCommand(this), new VoidRpAdminCommand(this));
+        bindCommand("nationdonate", new PlayerNationDonateCommand(this), new PlayerNationDonateCommand(this));
+        bindCommand("nationtreasury", new PlayerNationTreasuryCommand(this), new PlayerNationTreasuryCommand(this));
+        bindCommand("nationtreasuryhistory", new PlayerNationTreasuryHistoryCommand(this), new PlayerNationTreasuryHistoryCommand(this));
+        bindCommand("nationwithdraw", new PlayerNationWithdrawCommand(this), new PlayerNationWithdrawCommand(this));
     }
 
     private void registerListeners() {
         Bukkit.getPluginManager().registerEvents(new PlayerJoinRewardListener(this), this);
     }
 
+    private void bindCommand(String name, CommandExecutor executor, TabCompleter completer) {
+        PluginCommand command = getCommand(name);
+        if (command == null) {
+            getLogger().warning("Command is missing in plugin.yml: " + name);
+            return;
+        }
+        command.setExecutor(executor);
+        command.setTabCompleter(completer);
+    }
+
     private void setupEconomy() {
-        if (getServer().getPluginManager().getPlugin("Vault") == null) {
-            getLogger().warning("Vault not found. Economy-dependent features may be limited.");
-            this.economy = null;
-            return;
-        }
-
-        RegisteredServiceProvider<Economy> provider
-                = getServer().getServicesManager().getRegistration(Economy.class);
-
+        RegisteredServiceProvider<Economy> provider = Bukkit.getServicesManager().getRegistration(Economy.class);
         if (provider == null) {
-            getLogger().warning("No Economy provider found via Vault.");
-            this.economy = null;
+            getLogger().warning("Vault economy provider not found. Treasury operations will be limited.");
+            economy = null;
             return;
         }
-
-        this.economy = provider.getProvider();
-        if (this.economy == null) {
-            getLogger().warning("Economy provider resolved as null.");
-        }
+        economy = provider.getProvider();
     }
 
     public GameSyncConfig getGameSyncConfig() {
@@ -226,6 +211,14 @@ public final class VoidRpGameSyncPlugin extends JavaPlugin {
 
     public NationSyncService getNationSyncService() {
         return nationSyncService;
+    }
+
+    public SyncScheduler getSyncScheduler() {
+        return syncScheduler;
+    }
+
+    public SkinCommandService getSkinCommandService() {
+        return skinCommandService;
     }
 
     public Economy getEconomy() {

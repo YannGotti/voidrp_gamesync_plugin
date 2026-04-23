@@ -21,6 +21,7 @@ import ru.voidrp.gamesync.model.GameNationTreasuryWithdrawRequest;
 import ru.voidrp.gamesync.model.NationDefinition;
 import ru.voidrp.gamesync.model.NationMemberStatsSyncRequest;
 import ru.voidrp.gamesync.model.NationStatsPayload;
+import ru.voidrp.gamesync.model.PlayerSkinResponse;
 import ru.voidrp.gamesync.model.ReferralResolveResponse;
 
 public final class BackendClient {
@@ -103,6 +104,13 @@ public final class BackendClient {
         String url = apiUrl(path);
         HttpResponse<String> response = get(url);
         return gson.fromJson(response.body(), ReferralResolveResponse.class);
+    }
+
+    public PlayerSkinResponse getPlayerSkin(String minecraftNickname) throws IOException, InterruptedException {
+        String path = "/server/auth/players/" + encode(minecraftNickname) + "/skin";
+        String url = apiUrl(path);
+        HttpResponse<String> response = get(url);
+        return gson.fromJson(response.body(), PlayerSkinResponse.class);
     }
 
     private HttpResponse<String> get(String url) throws IOException, InterruptedException {

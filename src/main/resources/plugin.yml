@@ -7,6 +7,7 @@ depend:
 softdepend:
   - LuckPerms
   - WorldGuard
+  - SkinsRestorer
 
 commands:
   vrgs:
@@ -29,21 +30,17 @@ commands:
     permission: voidrp.gamesync.treasury.view
     aliases: [ntreasuryhistory]
   nationwithdraw:
-    description: Withdraw helper for leader/officer
+    description: Withdraw money from nation treasury
     usage: /nationwithdraw <amount> [comment]
     permission: voidrp.gamesync.treasury.manage
     aliases: [nwithdraw]
 
 permissions:
   voidrp.gamesync.admin:
-    description: Admin access to VoidRP GameSync
     default: op
   voidrp.gamesync.donate:
-    description: Allow player to donate to nation treasury
     default: true
   voidrp.gamesync.treasury.view:
-    description: Allow player to view nation treasury
     default: true
   voidrp.gamesync.treasury.manage:
-    description: Allow leader/officer treasury manage helper commands
-    default: true
+    default: op

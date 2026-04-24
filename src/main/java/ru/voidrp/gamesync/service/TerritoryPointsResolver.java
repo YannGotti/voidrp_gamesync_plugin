@@ -93,7 +93,7 @@ public final class TerritoryPointsResolver {
 
         if (resolved != null) {
             report.finalValue = resolved;
-            report.resolutionMode = "worldguard";
+            report.resolutionMode = "worldguard-by-nation-members";
             return report;
         }
 
@@ -113,15 +113,20 @@ public final class TerritoryPointsResolver {
             return null;
         }
 
-        Set<UUID> memberUuids = resolveMemberUuids(definition.allMembersIncludingRoles());
-        Set<String> memberNames = resolveMemberNames(definition.allMembersIncludingRoles());
-
+        List<String> rawMembers = definition.allMembersIncludingRoles();
         if (debugReport != null) {
-            debugReport.memberUuidsResolved = memberUuids.size();
-            debugReport.memberNamesResolved = memberNames.size();
+            debugReport.membersChecked = rawMembers.size();
         }
 
-        if (memberUuids.isEmpty() && memberNames.isEmpty()) {
+        ResolvedMembers resolvedMembers = resolveMembers(rawMembers);
+
+        if (debugReport != null) {
+            debugReport.memberUuidsResolved = resolvedMembers.uuids.size();
+            debugReport.memberNamesResolved = resolvedMembers.names.size();
+            debugReport.unresolvedMembers.addAll(resolvedMembers.unresolved);
+        }
+
+        if (resolvedMembers.uuids.isEmpty() && resolvedMembers.names.isEmpty()) {
             return 0;
         }
 
@@ -143,8 +148,12 @@ public final class TerritoryPointsResolver {
                 }
 
                 for (ProtectedRegion region : regionManager.getRegions().values()) {
-                    MatchResult ownersMatch = findMatch(region.getOwners(), memberUuids, memberNames, "owner");
-                    MatchResult membersMatch = findMatch(region.getMembers(), memberUuids, memberNames, "member");
+                    if (debugReport != null) {
+                        debugReport.regionsScanned++;
+                    }
+
+                    MatchResult ownersMatch = findMatch(region.getOwners(), resolvedMembers, "owner");
+                    MatchResult membersMatch = findMatch(region.getMembers(), resolvedMembers, "member");
 
                     MatchResult chosenMatch = ownersMatch != null ? ownersMatch : membersMatch;
                     if (chosenMatch == null) {
@@ -156,12 +165,12 @@ public final class TerritoryPointsResolver {
                         continue;
                     }
 
-                    long size = count3d ? calculate3d(region) : calculate2d(region);
-                    if (size <= 0L) {
+                    long area = count3d ? calculate3d(region) : calculate2d(region);
+                    if (area <= 0L) {
                         continue;
                     }
 
-                    total += size;
+                    total += area;
 
                     if (debugReport != null) {
                         debugReport.matches.add(
@@ -170,7 +179,7 @@ public final class TerritoryPointsResolver {
                                         region.getId(),
                                         chosenMatch.matchType,
                                         chosenMatch.matchedValue,
-                                        size,
+                                        area,
                                         count3d ? "3d" : "2d"
                                 )
                         );
@@ -191,24 +200,29 @@ public final class TerritoryPointsResolver {
         return (int) total;
     }
 
-    private MatchResult findMatch(DefaultDomain domain, Set<UUID> memberUuids, Set<String> memberNames, String sourcePrefix) {
+    private MatchResult findMatch(DefaultDomain domain, ResolvedMembers members, String sourcePrefix) {
         if (domain == null) {
             return null;
         }
 
-        Set<UUID> uuids = domain.getUniqueIds();
-        if (uuids != null) {
-            for (UUID uuid : uuids) {
-                if (uuid != null && memberUuids.contains(uuid)) {
+        Set<UUID> regionUuids = domain.getUniqueIds();
+        if (regionUuids != null && !regionUuids.isEmpty()) {
+            for (UUID uuid : regionUuids) {
+                if (uuid != null && members.uuids.contains(uuid)) {
                     return new MatchResult(sourcePrefix + "_uuid", uuid.toString());
                 }
             }
         }
 
-        Set<String> players = domain.getPlayers();
-        if (players != null) {
-            for (String name : players) {
-                if (name != null && memberNames.contains(name.toLowerCase(Locale.ROOT))) {
+        Set<String> regionPlayers = domain.getPlayers();
+        if (regionPlayers != null && !regionPlayers.isEmpty()) {
+            for (String name : regionPlayers) {
+                if (name == null || name.isBlank()) {
+                    continue;
+                }
+
+                String normalized = name.trim().toLowerCase(Locale.ROOT);
+                if (members.names.contains(normalized)) {
                     return new MatchResult(sourcePrefix + "_name", name);
                 }
             }
@@ -217,32 +231,36 @@ public final class TerritoryPointsResolver {
         return null;
     }
 
-    private Set<UUID> resolveMemberUuids(List<String> members) {
-        Set<UUID> result = new HashSet<>();
-        for (String nickname : members) {
-            if (nickname == null || nickname.isBlank()) {
+    private ResolvedMembers resolveMembers(List<String> rawMembers) {
+        ResolvedMembers result = new ResolvedMembers();
+
+        if (rawMembers == null || rawMembers.isEmpty()) {
+            return result;
+        }
+
+        for (String rawName : rawMembers) {
+            if (rawName == null || rawName.isBlank()) {
                 continue;
             }
+
+            String trimmed = rawName.trim();
+            result.names.add(trimmed.toLowerCase(Locale.ROOT));
+
             try {
-                OfflinePlayer player = Bukkit.getOfflinePlayer(nickname);
-                if (player != null && player.getUniqueId() != null) {
-                    result.add(player.getUniqueId());
+                OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(trimmed);
+                if (offlinePlayer != null && offlinePlayer.getUniqueId() != null) {
+                    result.uuids.add(offlinePlayer.getUniqueId());
+                } else {
+                    result.unresolved.add(trimmed);
                 }
             } catch (Exception exception) {
-                plugin.getLogger().warning("Failed to resolve UUID for nation member " + nickname + ": " + exception.getMessage());
+                result.unresolved.add(trimmed);
+                if (config.isVerboseSync()) {
+                    plugin.getLogger().warning("Failed to resolve UUID for nation member " + trimmed + ": " + exception.getMessage());
+                }
             }
         }
-        return result;
-    }
 
-    private Set<String> resolveMemberNames(List<String> members) {
-        Set<String> result = new HashSet<>();
-        for (String nickname : members) {
-            if (nickname == null || nickname.isBlank()) {
-                continue;
-            }
-            result.add(nickname.toLowerCase(Locale.ROOT));
-        }
         return result;
     }
 
@@ -277,8 +295,13 @@ public final class TerritoryPointsResolver {
         return width * height * length;
     }
 
-    private static final class MatchResult {
+    private static final class ResolvedMembers {
+        private final Set<UUID> uuids = new HashSet<>();
+        private final Set<String> names = new HashSet<>();
+        private final List<String> unresolved = new ArrayList<>();
+    }
 
+    private static final class MatchResult {
         private final String matchType;
         private final String matchedValue;
 
@@ -289,19 +312,21 @@ public final class TerritoryPointsResolver {
     }
 
     public static final class TerritoryDebugReport {
-
         public final String slug;
         public final String source;
         public final int manualValue;
         public final String countMode;
         public final boolean fallbackToManual;
 
+        public int membersChecked = 0;
         public int memberUuidsResolved = 0;
         public int memberNamesResolved = 0;
+        public int regionsScanned = 0;
         public int worldguardValue = 0;
         public int finalValue = 0;
         public String resolutionMode = null;
         public String error = null;
+        public final List<String> unresolvedMembers = new ArrayList<>();
         public final List<TerritoryMatch> matches = new ArrayList<>();
 
         public TerritoryDebugReport(
@@ -326,7 +351,6 @@ public final class TerritoryPointsResolver {
             String matchedValue,
             long contributedArea,
             String countMode
-            ) {
-
+    ) {
     }
 }

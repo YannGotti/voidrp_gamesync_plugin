@@ -1,7 +1,6 @@
 package ru.voidrp.gamesync.command;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 
@@ -13,7 +12,7 @@ import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 
 import ru.voidrp.gamesync.VoidRpGameSyncPlugin;
-import ru.voidrp.gamesync.model.NationDefinition;
+import ru.voidrp.gamesync.model.PlayerSkinResponse;
 import ru.voidrp.gamesync.service.TerritoryPointsResolver.TerritoryDebugReport;
 import ru.voidrp.gamesync.service.TerritoryPointsResolver.TerritoryMatch;
 
@@ -49,24 +48,16 @@ public final class VoidRpAdminCommand implements CommandExecutor, TabCompleter {
                 handleSync(sender, args);
                 return true;
             }
-            case "reward" -> {
-                handleReward(sender, args);
-                return true;
-            }
-            case "nation" -> {
-                handleNation(sender, args);
-                return true;
-            }
-            case "meta" -> {
-                handleMeta(sender, args);
-                return true;
-            }
-            case "nations" -> {
-                handleNations(sender, args);
+            case "skin" -> {
+                handleSkin(sender, args);
                 return true;
             }
             case "territory" -> {
                 handleTerritory(sender, args);
+                return true;
+            }
+            case "reward" -> {
+                handleReward(sender, args);
                 return true;
             }
             default -> {
@@ -78,7 +69,7 @@ public final class VoidRpAdminCommand implements CommandExecutor, TabCompleter {
 
     private void handleSync(CommandSender sender, String[] args) {
         if (args.length < 2) {
-            sender.sendMessage("§eИспользование: /vrgs sync <all|nation> [slug]");
+            sender.sendMessage("§eИспользование: /vrgs sync <all|nation|player> [slug|nick]");
             return;
         }
 
@@ -100,7 +91,105 @@ public final class VoidRpAdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
+        if (mode.equals("player")) {
+            if (args.length < 3) {
+                sender.sendMessage("§eИспользование: /vrgs sync player <nick>");
+                return;
+            }
+            String nick = args[2];
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> plugin.getNationSyncService().syncNationForPlayer(nick));
+            sender.sendMessage("§aЗапущен sync по игроку: §f" + nick);
+            return;
+        }
+
         sender.sendMessage("§cНеизвестный режим sync.");
+    }
+
+    private void handleSkin(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage("§eИспользование: /vrgs skin <refresh|clear> <player>");
+            return;
+        }
+
+        Player target = Bukkit.getPlayerExact(args[2]);
+        if (target == null) {
+            sender.sendMessage("§cИгрок не найден онлайн: " + args[2]);
+            return;
+        }
+
+        String mode = args[1].toLowerCase(Locale.ROOT);
+        if (mode.equals("clear")) {
+            Bukkit.getScheduler().runTask(plugin, () -> plugin.getSkinCommandService().clear(target));
+            sender.sendMessage("§aОтправлена команда очистки скина для §f" + target.getName());
+            return;
+        }
+
+        if (mode.equals("refresh")) {
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                try {
+                    PlayerSkinResponse response = plugin.getBackendClient().getPlayerSkin(target.getName());
+                    Bukkit.getScheduler().runTask(plugin, () -> plugin.getSkinCommandService().refresh(target, response));
+                } catch (Exception exception) {
+                    sender.sendMessage("§cНе удалось обновить skin: §f" + exception.getMessage());
+                }
+            });
+            sender.sendMessage("§aЗапрошено обновление skin для §f" + target.getName());
+            return;
+        }
+
+        sender.sendMessage("§cИспользование: /vrgs skin <refresh|clear> <player>");
+    }
+
+    private void handleTerritory(CommandSender sender, String[] args) {
+        if (args.length < 3 || !args[1].equalsIgnoreCase("debug")) {
+            sender.sendMessage("§eИспользование: /vrgs territory debug <slug>");
+            return;
+        }
+
+        String slug = args[2];
+        try {
+            TerritoryDebugReport report = plugin.getNationSyncService().buildTerritoryDebugReport(slug);
+            sender.sendMessage("§6=== Territory debug: §f" + slug + " §6===");
+            sender.sendMessage("§7Source: §f" + report.source + " §8| §7Resolution: §f" + report.resolutionMode);
+            sender.sendMessage("§7Manual: §f" + report.manualValue + " §8| §7WorldGuard: §f" + report.worldguardValue + " §8| §7Final: §f" + report.finalValue);
+            sender.sendMessage("§7Members checked: §f" + report.membersChecked + " §8| §7UUID resolved: §f" + report.memberUuidsResolved + " §8| §7Name resolved: §f" + report.memberNamesResolved);
+            sender.sendMessage("§7Regions scanned: §f" + report.regionsScanned + " §8| §7Regions matched: §f" + report.matches.size());
+
+            if (report.error != null && !report.error.isBlank()) {
+                sender.sendMessage("§cError: " + report.error);
+            }
+
+            if (!report.unresolvedMembers.isEmpty()) {
+                sender.sendMessage("§eНе удалось распознать UUID для:");
+                int limit = Math.min(10, report.unresolvedMembers.size());
+                for (int i = 0; i < limit; i++) {
+                    sender.sendMessage("§8- §f" + report.unresolvedMembers.get(i));
+                }
+                if (report.unresolvedMembers.size() > limit) {
+                    sender.sendMessage("§8... ещё " + (report.unresolvedMembers.size() - limit));
+                }
+            }
+
+            if (report.matches.isEmpty()) {
+                sender.sendMessage("§eСовпадений регионов не найдено.");
+                sender.sendMessage("§7Проверь, что участники государства являются owners/members в WorldGuard регионах.");
+            } else {
+                int limit = Math.min(15, report.matches.size());
+                for (int i = 0; i < limit; i++) {
+                    TerritoryMatch match = report.matches.get(i);
+                    sender.sendMessage("§8- §f" + match.worldName() + ":" + match.regionId()
+                            + " §7type=§f" + match.matchType()
+                            + " §7value=§f" + match.matchedValue()
+                            + " §7area=§f" + match.contributedArea()
+                            + " §7mode=§f" + match.countMode());
+                }
+                if (report.matches.size() > limit) {
+                    sender.sendMessage("§8... ещё " + (report.matches.size() - limit) + " регионов");
+                }
+            }
+        } catch (Exception exception) {
+            sender.sendMessage("§cНе удалось собрать territory debug: §f" + exception.getMessage());
+        }
     }
 
     private void handleReward(CommandSender sender, String[] args) {
@@ -131,207 +220,69 @@ public final class VoidRpAdminCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§cНеизвестный режим reward.");
     }
 
-    private void handleNation(CommandSender sender, String[] args) {
-        if (args.length < 5 || !args[1].equalsIgnoreCase("set")) {
-            sender.sendMessage("§eИспользование: /vrgs nation set <slug> <territory|bosskills|events|prestige> <value>");
-            return;
-        }
-
-        String slug = args[2].toLowerCase(Locale.ROOT);
-        String key = args[3].toLowerCase(Locale.ROOT);
-
-        if (!Arrays.asList("territory", "bosskills", "events", "prestige").contains(key)) {
-            sender.sendMessage("§cДопустимые ключи: territory, bosskills, events, prestige");
-            return;
-        }
-
-        int value;
-        try {
-            value = Integer.parseInt(args[4]);
-        } catch (NumberFormatException exception) {
-            sender.sendMessage("§cValue должен быть числом.");
-            return;
-        }
-
-        plugin.getDataStore().setNationOverride(slug, key, value);
-        plugin.getDataStore().saveNow();
-        sender.sendMessage("§aOverride сохранён: §f" + slug + " / " + key + " = " + value);
-    }
-
-    private void handleMeta(CommandSender sender, String[] args) {
-        if (args.length < 2) {
-            sender.sendMessage("§eИспользование: /vrgs meta <apply|reconcile> [player]");
-            return;
-        }
-
-        String mode = args[1].toLowerCase(Locale.ROOT);
-
-        if (mode.equals("reconcile")) {
-            Bukkit.getScheduler().runTask(plugin, () -> plugin.getLuckPermsNationMetaService().reconcileOnlinePlayers());
-            sender.sendMessage("§aЗапущен reconcile LuckPerms meta для онлайн игроков.");
-            return;
-        }
-
-        if (mode.equals("apply")) {
-            if (args.length < 3) {
-                sender.sendMessage("§eИспользование: /vrgs meta apply <player>");
-                return;
-            }
-            Player target = Bukkit.getPlayerExact(args[2]);
-            if (target == null) {
-                sender.sendMessage("§cИгрок не найден онлайн: " + args[2]);
-                return;
-            }
-            Bukkit.getScheduler().runTask(plugin, () -> plugin.getLuckPermsNationMetaService().applyForPlayer(target));
-            sender.sendMessage("§aЗапущено обновление nation meta для §f" + target.getName());
-            return;
-        }
-
-        sender.sendMessage("§cНеизвестный режим meta.");
-    }
-
-    private void handleNations(CommandSender sender, String[] args) {
-        if (args.length < 2 || !args[1].equalsIgnoreCase("refresh")) {
-            sender.sendMessage("§eИспользование: /vrgs nations refresh");
-            return;
-        }
-
-        plugin.getNationRegistry().refresh();
-        sender.sendMessage("§aNation registry refreshed. Source: §f" + plugin.getNationRegistry().getSource());
-    }
-
-    private void handleTerritory(CommandSender sender, String[] args) {
-        if (args.length < 2) {
-            sender.sendMessage("§eИспользование: /vrgs territory <slug>");
-            return;
-        }
-
-        String slug = args[1].toLowerCase(Locale.ROOT);
-        NationDefinition definition = plugin.getNationRegistry().get(slug);
-        if (definition == null) {
-            sender.sendMessage("§cГосударство не найдено: " + slug);
-            return;
-        }
-
-        TerritoryDebugReport report = plugin.getTerritoryPointsResolver().buildDebugReport(definition);
-
-        sender.sendMessage("§6=== Territory debug: §f" + definition.slug() + " §6===");
-        sender.sendMessage("§7Source: §f" + valueOrDash(report.source)
-            + " §8| §7Mode: §f" + valueOrDash(report.countMode)
-            + " §8| §7Fallback: §f" + report.fallbackToManual);
-        sender.sendMessage("§7Members resolved: §fUUID=" + report.memberUuidsResolved + "§7, names=" + report.memberNamesResolved);
-        sender.sendMessage("§7Manual: §f" + report.manualValue
-            + " §8| §7WG: §f" + report.worldguardValue
-            + " §8| §7Final: §a" + report.finalValue);
-        sender.sendMessage("§7Resolution: §f" + valueOrDash(report.resolutionMode));
-
-        if (report.error != null && !report.error.isBlank()) {
-            sender.sendMessage("§cError: " + report.error);
-        }
-
-        if (report.matches.isEmpty()) {
-            sender.sendMessage("§eСовпавшие регионы не найдены.");
-            return;
-        }
-
-        sender.sendMessage("§7Засчитанные регионы: §f" + report.matches.size());
-        for (TerritoryMatch match : report.matches) {
-            sender.sendMessage(
-                "§8- §f" + match.worldName() + "/" + match.regionId()
-                    + " §8| §7owner: §f" + match.matchType() + "=" + match.matchedValue()
-                    + " §8| §7area: §a" + match.contributedArea()
-                    + " §8| §7mode: §f" + match.countMode()
-            );
-        }
-    }
-
     private void sendHelp(CommandSender sender) {
-        sender.sendMessage("§6VoidRpGameSync commands:");
-        sender.sendMessage("§e/vrgs reload");
-        sender.sendMessage("§e/vrgs sync all");
-        sender.sendMessage("§e/vrgs sync nation <slug>");
-        sender.sendMessage("§e/vrgs nations refresh");
-        sender.sendMessage("§e/vrgs territory <slug>");
-        sender.sendMessage("§e/vrgs meta reconcile");
-        sender.sendMessage("§e/vrgs meta apply <player>");
-        sender.sendMessage("§e/vrgs reward resolve <player>");
-        sender.sendMessage("§e/vrgs reward apply <player>");
-        sender.sendMessage("§e/vrgs nation set <slug> <territory|bosskills|events|prestige> <value>");
+        sender.sendMessage("§6/vrgs reload");
+        sender.sendMessage("§6/vrgs sync all");
+        sender.sendMessage("§6/vrgs sync nation <slug>");
+        sender.sendMessage("§6/vrgs sync player <nick>");
+        sender.sendMessage("§6/vrgs skin refresh <player>");
+        sender.sendMessage("§6/vrgs skin clear <player>");
+        sender.sendMessage("§6/vrgs territory debug <slug>");
+        sender.sendMessage("§6/vrgs reward <resolve|apply> <player>");
     }
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        if (!sender.hasPermission("voidrp.gamesync.admin")) return List.of();
+        if (!sender.hasPermission("voidrp.gamesync.admin")) {
+            return List.of();
+        }
 
         if (args.length == 1) {
-            return filter(args[0], List.of("reload", "sync", "reward", "nation", "meta", "nations", "territory"));
+            return filter(List.of("reload", "sync", "skin", "territory", "reward"), args[0]);
         }
 
-        if (args.length == 2 && args[0].equalsIgnoreCase("sync")) {
-            return filter(args[1], List.of("all", "nation"));
+        if (args.length == 2) {
+            return switch (args[0].toLowerCase(Locale.ROOT)) {
+                case "sync" -> filter(List.of("all", "nation", "player"), args[1]);
+                case "skin" -> filter(List.of("refresh", "clear"), args[1]);
+                case "territory" -> filter(List.of("debug"), args[1]);
+                case "reward" -> filter(List.of("resolve", "apply"), args[1]);
+                default -> List.of();
+            };
         }
 
-        if (args.length == 3 && args[0].equalsIgnoreCase("sync") && args[1].equalsIgnoreCase("nation")) {
-            List<String> slugs = new ArrayList<>();
-            for (NationDefinition def : plugin.getNationRegistry().all()) slugs.add(def.slug());
-            return filter(args[2], slugs);
-        }
-
-        if (args.length == 2 && args[0].equalsIgnoreCase("reward")) {
-            return filter(args[1], List.of("resolve", "apply"));
-        }
-
-        if (args.length == 3 && args[0].equalsIgnoreCase("reward")) {
-            List<String> names = new ArrayList<>();
-            for (Player player : Bukkit.getOnlinePlayers()) names.add(player.getName());
-            return filter(args[2], names);
-        }
-
-        if (args.length == 2 && args[0].equalsIgnoreCase("meta")) {
-            return filter(args[1], List.of("apply", "reconcile"));
-        }
-
-        if (args.length == 3 && args[0].equalsIgnoreCase("meta") && args[1].equalsIgnoreCase("apply")) {
-            List<String> names = new ArrayList<>();
-            for (Player player : Bukkit.getOnlinePlayers()) names.add(player.getName());
-            return filter(args[2], names);
-        }
-
-        if (args.length == 2 && args[0].equalsIgnoreCase("nations")) {
-            return filter(args[1], List.of("refresh"));
-        }
-
-        if (args.length == 2 && args[0].equalsIgnoreCase("nation")) {
-            return filter(args[1], List.of("set"));
-        }
-
-        if (args.length == 3 && args[0].equalsIgnoreCase("nation") && args[1].equalsIgnoreCase("set")) {
-            List<String> slugs = new ArrayList<>();
-            for (NationDefinition def : plugin.getNationRegistry().all()) slugs.add(def.slug());
-            return filter(args[2], slugs);
-        }
-
-        if (args.length == 4 && args[0].equalsIgnoreCase("nation") && args[1].equalsIgnoreCase("set")) {
-            return filter(args[3], List.of("territory", "bosskills", "events", "prestige"));
-        }
-
-        if (args.length == 2 && args[0].equalsIgnoreCase("territory")) {
-            List<String> slugs = new ArrayList<>();
-            for (NationDefinition def : plugin.getNationRegistry().all()) slugs.add(def.slug());
-            return filter(args[1], slugs);
+        if (args.length == 3) {
+            String sub = args[0].toLowerCase(Locale.ROOT);
+            if (sub.equals("sync") && args[1].equalsIgnoreCase("player")) {
+                return filter(onlinePlayers(), args[2]);
+            }
+            if (sub.equals("skin")) {
+                return filter(onlinePlayers(), args[2]);
+            }
+            if (sub.equals("reward")) {
+                return filter(onlinePlayers(), args[2]);
+            }
+            if (sub.equals("territory")) {
+                return List.of();
+            }
         }
 
         return List.of();
     }
 
-    private List<String> filter(String input, List<String> values) {
-        String lowered = input.toLowerCase(Locale.ROOT);
-        return values.stream()
-            .filter(value -> value.toLowerCase(Locale.ROOT).startsWith(lowered))
-            .toList();
+    private List<String> onlinePlayers() {
+        List<String> values = new ArrayList<>();
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            values.add(player.getName());
+        }
+        return values;
     }
 
-    private String valueOrDash(String value) {
-        return value == null || value.isBlank() ? "-" : value;
+    private List<String> filter(List<String> source, String query) {
+        String normalized = query == null ? "" : query.toLowerCase(Locale.ROOT);
+        return source.stream()
+                .filter(item -> item.toLowerCase(Locale.ROOT).startsWith(normalized))
+                .sorted()
+                .toList();
     }
 }

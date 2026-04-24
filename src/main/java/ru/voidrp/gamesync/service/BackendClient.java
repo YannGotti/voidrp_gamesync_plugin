@@ -99,18 +99,18 @@ public final class BackendClient {
         return gson.fromJson(response.body(), NationTreasuryTransactionListResponse.class);
     }
 
+    public PlayerSkinResponse getPlayerSkin(String minecraftNickname) throws IOException, InterruptedException {
+        String path = "/server/auth/player-skin/" + encode(minecraftNickname);
+        String url = apiUrl(path);
+        HttpResponse<String> response = get(url);
+        return gson.fromJson(response.body(), PlayerSkinResponse.class);
+    }
+
     public ReferralResolveResponse resolveReferralReward(String minecraftNickname) throws IOException, InterruptedException {
         String path = "/game-sync/referrals/reward/" + encode(minecraftNickname);
         String url = apiUrl(path);
         HttpResponse<String> response = get(url);
         return gson.fromJson(response.body(), ReferralResolveResponse.class);
-    }
-
-    public PlayerSkinResponse getPlayerSkin(String minecraftNickname) throws IOException, InterruptedException {
-        String path = "/server/auth/players/" + encode(minecraftNickname) + "/skin";
-        String url = apiUrl(path);
-        HttpResponse<String> response = get(url);
-        return gson.fromJson(response.body(), PlayerSkinResponse.class);
     }
 
     private HttpResponse<String> get(String url) throws IOException, InterruptedException {

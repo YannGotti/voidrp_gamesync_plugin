@@ -1,7 +1,6 @@
 package ru.voidrp.gamesync.listener;
 
 import org.bukkit.Bukkit;
-import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
@@ -35,30 +34,39 @@ public final class PlayerJoinRewardListener implements Listener {
             );
         }
 
+        if (plugin.getGameSyncConfig().isSyncOnPlayerJoin()) {
+            plugin.getServer().getScheduler().runTaskLaterAsynchronously(
+                plugin,
+                () -> plugin.getNationSyncService().syncNationForPlayer(event.getPlayer().getName()),
+                plugin.getGameSyncConfig().getPlayerJoinSyncDelayTicks()
+            );
+        }
+
         if (plugin.getGameSyncConfig().isSkinSyncEnabled() && plugin.getGameSyncConfig().isSkinApplyOnJoin()) {
-            scheduleSkinApply(event.getPlayer());
+            scheduleSkinApply(event.getPlayer().getName());
         }
     }
 
-    private void scheduleSkinApply(Player player) {
+    private void scheduleSkinApply(String playerName) {
         long delayTicks = plugin.getGameSyncConfig().getSkinJoinDelayTicks();
 
         plugin.getServer().getScheduler().runTaskLaterAsynchronously(
                 plugin,
                 () -> {
-                    if (!player.isOnline()) {
-                        return;
-                    }
-
                     try {
-                        PlayerSkinResponse response = plugin.getBackendClient().getPlayerSkin(player.getName());
+                        PlayerSkinResponse response = plugin.getBackendClient().getPlayerSkin(playerName);
                         Bukkit.getScheduler().runTask(
                                 plugin,
-                                () -> plugin.getSkinCommandService().applyOrClear(player, response)
+                                () -> {
+                                    var player = Bukkit.getPlayerExact(playerName);
+                                    if (player != null && player.isOnline()) {
+                                        plugin.getSkinCommandService().applyOrClear(player, response);
+                                    }
+                                }
                         );
                     } catch (Exception exception) {
                         if (plugin.getGameSyncConfig().isVerboseSync()) {
-                            plugin.getLogger().warning("Failed to sync skin for " + player.getName() + ": " + exception.getMessage());
+                            plugin.getLogger().warning("Failed to sync skin for " + playerName + ": " + exception.getMessage());
                         }
                     }
                 },

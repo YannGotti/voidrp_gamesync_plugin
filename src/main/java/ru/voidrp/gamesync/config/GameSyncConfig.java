@@ -39,8 +39,10 @@ public final class GameSyncConfig {
     private final String memberLabel;
     private final boolean skinSyncEnabled;
     private final boolean skinApplyOnJoin;
-    private final boolean skinClearWhenMissing;
     private final long skinJoinDelayTicks;
+    private final boolean clearMissingSkin;
+    private final boolean syncOnPlayerJoin;
+    private final long playerJoinSyncDelayTicks;
     private final boolean debugHttp;
     private final boolean verboseSync;
     private final ConfigurationSection rewardBundlesSection;
@@ -88,8 +90,11 @@ public final class GameSyncConfig {
 
         this.skinSyncEnabled = plugin.getConfig().getBoolean("skins.enabled", true);
         this.skinApplyOnJoin = plugin.getConfig().getBoolean("skins.apply-on-join", true);
-        this.skinClearWhenMissing = plugin.getConfig().getBoolean("skins.clear-when-missing", true);
         this.skinJoinDelayTicks = Math.max(1L, plugin.getConfig().getLong("skins.join-delay-ticks", 100L));
+        this.clearMissingSkin = plugin.getConfig().getBoolean("skins.clear-when-missing", true);
+
+        this.syncOnPlayerJoin = plugin.getConfig().getBoolean("sync.sync-on-player-join", true);
+        this.playerJoinSyncDelayTicks = Math.max(1L, plugin.getConfig().getLong("sync.player-join-delay-ticks", 80L));
 
         this.debugHttp = plugin.getConfig().getBoolean("debug.log-http", false);
         this.verboseSync = plugin.getConfig().getBoolean("debug.verbose-sync", false);
@@ -233,12 +238,20 @@ public final class GameSyncConfig {
         return skinApplyOnJoin;
     }
 
-    public boolean isSkinClearWhenMissing() {
-        return skinClearWhenMissing;
-    }
-
     public long getSkinJoinDelayTicks() {
         return skinJoinDelayTicks;
+    }
+
+    public boolean isClearMissingSkin() {
+        return clearMissingSkin;
+    }
+
+    public boolean isSyncOnPlayerJoin() {
+        return syncOnPlayerJoin;
+    }
+
+    public long getPlayerJoinSyncDelayTicks() {
+        return playerJoinSyncDelayTicks;
     }
 
     public boolean isDebugHttp() {
@@ -278,10 +291,14 @@ public final class GameSyncConfig {
         }
 
         return switch (normalized) {
-            case "leader" -> "Лидер";
-            case "officer" -> "Офицер";
-            case "member" -> "Участник";
-            default -> role;
+            case "leader" ->
+                "Лидер";
+            case "officer" ->
+                "Офицер";
+            case "member" ->
+                "Участник";
+            default ->
+                role;
         };
     }
 

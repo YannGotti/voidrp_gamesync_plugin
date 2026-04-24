@@ -1,8 +1,5 @@
 package ru.voidrp.gamesync.service;
 
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -11,13 +8,19 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import net.milkbowl.vault.economy.Economy;
+
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.Statistic;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
+import net.milkbowl.vault.economy.Economy;
 import ru.voidrp.gamesync.config.GameSyncConfig;
 import ru.voidrp.gamesync.config.NationRegistry;
 import ru.voidrp.gamesync.model.NationDefinition;
@@ -36,13 +39,13 @@ public final class NationSyncService {
     private final TerritoryPointsResolver territoryPointsResolver;
 
     public NationSyncService(
-        JavaPlugin plugin,
-        BackendClient backendClient,
-        NationRegistry registry,
-        PluginDataStore dataStore,
-        Economy economy,
-        GameSyncConfig config,
-        TerritoryPointsResolver territoryPointsResolver
+            JavaPlugin plugin,
+            BackendClient backendClient,
+            NationRegistry registry,
+            PluginDataStore dataStore,
+            Economy economy,
+            GameSyncConfig config,
+            TerritoryPointsResolver territoryPointsResolver
     ) {
         this.plugin = plugin;
         this.backendClient = backendClient;
@@ -91,6 +94,25 @@ public final class NationSyncService {
         }
     }
 
+    public void syncNationForPlayer(String minecraftNickname) {
+        NationDefinition definition = registry.findByPlayer(minecraftNickname);
+        if (definition == null) {
+            if (config.isVerboseSync()) {
+                plugin.getLogger().info("Join sync skipped for " + minecraftNickname + ": nation not found.");
+            }
+            return;
+        }
+        syncNation(definition.slug());
+    }
+
+    public TerritoryPointsResolver.TerritoryDebugReport buildTerritoryDebugReport(String slug) {
+        NationDefinition definition = registry.get(slug);
+        if (definition == null) {
+            throw new IllegalArgumentException("Nation not found in registry: " + slug);
+        }
+        return territoryPointsResolver.buildDebugReport(definition);
+    }
+
     public NationMemberStatsSyncRequest buildMemberStatsSyncRequest(NationDefinition definition) {
         List<PlayerStatSnapshot> snapshots = new ArrayList<>();
 
@@ -121,12 +143,12 @@ public final class NationSyncService {
         int prestigeBonus = definition.prestigeBonus() + dataStore.getNationOverride(definition.slug(), "prestige");
 
         return new NationMemberStatsSyncRequest(
-            definition.slug(),
-            territoryPoints,
-            bossKills,
-            eventsCompleted,
-            prestigeBonus,
-            snapshots
+                definition.slug(),
+                territoryPoints,
+                bossKills,
+                eventsCompleted,
+                prestigeBonus,
+                snapshots
         );
     }
 
@@ -151,16 +173,16 @@ public final class NationSyncService {
         PlayerStatSnapshot cached = dataStore.getPlayerStatSnapshot(uuid);
         if (cached != null) {
             return new PlayerStatSnapshot(
-                nickname,
-                cached.totalPlaytimeMinutes(),
-                cached.pvpKills(),
-                cached.mobKills(),
-                cached.deaths(),
-                cached.blocksPlaced(),
-                cached.blocksBroken(),
-                cached.currentBalance(),
-                "cached",
-                cached.lastSeenAt()
+                    nickname,
+                    cached.totalPlaytimeMinutes(),
+                    cached.pvpKills(),
+                    cached.mobKills(),
+                    cached.deaths(),
+                    cached.blocksPlaced(),
+                    cached.blocksBroken(),
+                    cached.currentBalance(),
+                    "cached",
+                    cached.lastSeenAt()
             );
         }
 
@@ -169,16 +191,16 @@ public final class NationSyncService {
         }
 
         return new PlayerStatSnapshot(
-            nickname,
-            0,
-            0,
-            0,
-            0,
-            0L,
-            0L,
-            0D,
-            "missing",
-            null
+                nickname,
+                0,
+                0,
+                0,
+                0,
+                0L,
+                0L,
+                0D,
+                "missing",
+                null
         );
     }
 
@@ -197,16 +219,16 @@ public final class NationSyncService {
         double currentBalance = resolveCurrentBalance(offlinePlayer);
 
         return new PlayerStatSnapshot(
-            nickname,
-            playtimeMinutes,
-            pvpKills,
-            mobKills,
-            deaths,
-            blocksPlaced,
-            blocksBroken,
-            currentBalance,
-            "live",
-            Instant.now().toString()
+                nickname,
+                playtimeMinutes,
+                pvpKills,
+                mobKills,
+                deaths,
+                blocksPlaced,
+                blocksBroken,
+                currentBalance,
+                "live",
+                Instant.now().toString()
         );
     }
 
@@ -234,16 +256,16 @@ public final class NationSyncService {
         }
 
         return new PlayerStatSnapshot(
-            nickname,
-            playtimeMinutes,
-            pvpKills,
-            mobKills,
-            deaths,
-            blocksPlaced,
-            blocksBroken,
-            currentBalance,
-            "stats_file",
-            lastSeenAt
+                nickname,
+                playtimeMinutes,
+                pvpKills,
+                mobKills,
+                deaths,
+                blocksPlaced,
+                blocksBroken,
+                currentBalance,
+                "stats_file",
+                lastSeenAt
         );
     }
 
@@ -390,19 +412,19 @@ public final class NationSyncService {
         }
 
         return !key.contains("sword")
-            && !key.contains("pickaxe")
-            && !key.contains("axe")
-            && !key.contains("shovel")
-            && !key.contains("hoe")
-            && !key.contains("bow")
-            && !key.contains("crossbow")
-            && !key.contains("shield")
-            && !key.contains("bucket")
-            && !key.contains("potion")
-            && !key.contains("helmet")
-            && !key.contains("chestplate")
-            && !key.contains("leggings")
-            && !key.contains("boots");
+                && !key.contains("pickaxe")
+                && !key.contains("axe")
+                && !key.contains("shovel")
+                && !key.contains("hoe")
+                && !key.contains("bow")
+                && !key.contains("crossbow")
+                && !key.contains("shield")
+                && !key.contains("bucket")
+                && !key.contains("potion")
+                && !key.contains("helmet")
+                && !key.contains("chestplate")
+                && !key.contains("leggings")
+                && !key.contains("boots");
     }
 
     private JsonObject readStatsFile(UUID uuid) {
@@ -447,5 +469,3 @@ public final class NationSyncService {
         return value.getAsJsonObject();
     }
 }
-
-

@@ -42,36 +42,42 @@ public final class SkinCommandService {
         }
 
         if (!response.has_skin || response.skin_url == null || response.skin_url.isBlank()) {
-            if (plugin.getGameSyncConfig().isSkinClearWhenMissing()) {
+            if (plugin.getGameSyncConfig().isClearMissingSkin()) {
                 dispatch("skin clear " + player.getName());
             }
             return;
         }
 
         String variant = normalizeVariant(response.model_variant);
-        String customSkinName = buildCustomSkinName(response.sha256);
-        dispatch("sr createcustom " + customSkinName + " " + response.skin_url + " " + variant);
-        dispatch("skin set " + customSkinName + " " + player.getName());
+        String customName = buildCustomName(player.getName(), response.sha256);
+        dispatch("sr createcustom " + customName + " " + response.skin_url + " " + variant);
+        dispatch("skin set " + customName + " " + player.getName());
+    }
+
+    public void clear(Player player) {
+        if (player == null || !player.isOnline() || !isAvailable()) {
+            return;
+        }
+        dispatch("skin clear " + player.getName());
+    }
+
+    public void refresh(Player player, PlayerSkinResponse response) {
+        applyOrClear(player, response);
     }
 
     private void dispatch(String command) {
         ConsoleCommandSender console = Bukkit.getConsoleSender();
         Bukkit.dispatchCommand(console, command);
-        if (plugin.getGameSyncConfig().isVerboseSync()) {
-            plugin.getLogger().info("[SkinSync] Executed: " + command);
-        }
     }
 
-    private String buildCustomSkinName(String sha256) {
-        String normalized = sha256 == null ? "" : sha256.trim().toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
-        if (normalized.isBlank()) {
-            return "voidrp_default_skin";
-        }
-        int max = Math.min(16, normalized.length());
-        return "voidrp_" + normalized.substring(0, max);
+    private String normalizeVariant(String value) {
+        String normalized = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        return normalized.equals("slim") ? "slim" : "classic";
     }
 
-    private String normalizeVariant(String raw) {
-        return "slim".equalsIgnoreCase(raw) ? "slim" : "classic";
+    private String buildCustomName(String playerName, String sha256) {
+        String safePlayer = playerName == null ? "player" : playerName.replaceAll("[^A-Za-z0-9_-]", "").toLowerCase(Locale.ROOT);
+        String suffix = (sha256 == null || sha256.isBlank()) ? "skin" : sha256.substring(0, Math.min(12, sha256.length())).toLowerCase(Locale.ROOT);
+        return "voidrp_" + safePlayer + "_" + suffix;
     }
 }

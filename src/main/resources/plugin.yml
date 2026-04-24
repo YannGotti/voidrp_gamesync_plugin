@@ -1,5 +1,5 @@
 name: VoidRpGameSync
-version: 1.0.0
+version: 1.1.0
 main: ru.voidrp.gamesync.VoidRpGameSyncPlugin
 api-version: "1.21"
 depend:
@@ -25,12 +25,12 @@ commands:
     permission: voidrp.gamesync.treasury.view
     aliases: [ntreasury]
   nationtreasuryhistory:
-    description: Show recent nation treasury history
+    description: Show nation treasury history
     usage: /nationtreasuryhistory
     permission: voidrp.gamesync.treasury.view
     aliases: [ntreasuryhistory]
   nationwithdraw:
-    description: Withdraw money from nation treasury
+    description: Withdraw nation treasury funds
     usage: /nationwithdraw <amount> [comment]
     permission: voidrp.gamesync.treasury.manage
     aliases: [nwithdraw]

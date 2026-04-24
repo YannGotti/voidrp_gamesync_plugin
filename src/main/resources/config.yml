@@ -2,8 +2,8 @@ backend:
   base-url: "https://api.void-rp.ru"
   api-prefix: "/api/v1"
   game-auth-secret: "AAEfal24AG2rwgwOTsL9HefSbp_8TpZZy6A"
-  connect-timeout-ms: 10000
-  read-timeout-ms: 20000
+  connect-timeout-ms: 8000
+  read-timeout-ms: 12000
 
 nation-source:
   backend-enabled: true
@@ -11,10 +11,12 @@ nation-source:
 
 sync:
   enabled: true
-  period-seconds: 300
+  period-seconds: 180
   sync-membership: true
   sync-stats: true
   stats-online-only: false
+  sync-on-player-join: true
+  player-join-delay-ticks: 80
 
 territory:
   source: "worldguard"

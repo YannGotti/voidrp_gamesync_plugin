@@ -8,6 +8,8 @@ import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import net.milkbowl.vault.economy.Economy;
+import ru.voidrp.gamesync.command.MarketPriceCommand;
+import ru.voidrp.gamesync.command.NationMarketCommand;
 import ru.voidrp.gamesync.command.PlayerNationDonateCommand;
 import ru.voidrp.gamesync.command.PlayerNationTreasuryCommand;
 import ru.voidrp.gamesync.command.PlayerNationTreasuryHistoryCommand;
@@ -15,9 +17,18 @@ import ru.voidrp.gamesync.command.PlayerNationWithdrawCommand;
 import ru.voidrp.gamesync.command.VoidRpAdminCommand;
 import ru.voidrp.gamesync.config.GameSyncConfig;
 import ru.voidrp.gamesync.config.NationRegistry;
+import ru.voidrp.gamesync.listener.NationMarketGuiListener;
 import ru.voidrp.gamesync.listener.PlayerJoinRewardListener;
 import ru.voidrp.gamesync.service.BackendClient;
+import ru.voidrp.gamesync.service.EconomyMarketCache;
+import ru.voidrp.gamesync.service.EconomyMarketSyncService;
+import ru.voidrp.gamesync.service.EconomyShopGuiBridgeService;
+import ru.voidrp.gamesync.service.EconomyShopVisualSyncService;
+import ru.voidrp.gamesync.service.ItemStackSnapshotService;
 import ru.voidrp.gamesync.service.LuckPermsNationMetaService;
+import ru.voidrp.gamesync.service.NationMarketConfirmService;
+import ru.voidrp.gamesync.service.NationMarketGuiService;
+import ru.voidrp.gamesync.service.NationMarketInventoryService;
 import ru.voidrp.gamesync.service.NationSyncService;
 import ru.voidrp.gamesync.service.ReferralRewardService;
 import ru.voidrp.gamesync.service.RewardCacheService;
@@ -41,6 +52,15 @@ public final class VoidRpGameSyncPlugin extends JavaPlugin {
     private SkinCommandService skinCommandService;
     private Economy economy;
 
+    private EconomyMarketCache economyMarketCache;
+    private EconomyMarketSyncService economyMarketSyncService;
+    private EconomyShopGuiBridgeService economyShopGuiBridgeService;
+    private EconomyShopVisualSyncService economyShopVisualSyncService;
+    private ItemStackSnapshotService itemStackSnapshotService;
+    private NationMarketInventoryService nationMarketInventoryService;
+    private NationMarketConfirmService nationMarketConfirmService;
+    private NationMarketGuiService nationMarketGuiService;
+
     @Override
     public void onEnable() {
         saveDefaultConfig();
@@ -48,42 +68,17 @@ public final class VoidRpGameSyncPlugin extends JavaPlugin {
         saveResource("data.yml", false);
 
         setupEconomy();
-
-        this.gameSyncConfig = new GameSyncConfig(this);
-        this.dataStore = new PluginDataStore(this);
-        this.backendClient = new BackendClient(this, gameSyncConfig);
-        this.rewardCacheService = new RewardCacheService(this, dataStore);
-        this.nationRegistry = new NationRegistry(this, backendClient, gameSyncConfig);
-        this.territoryPointsResolver = new TerritoryPointsResolver(this, dataStore, gameSyncConfig);
-        this.referralRewardService = new ReferralRewardService(this, backendClient, rewardCacheService, gameSyncConfig);
-        this.luckPermsNationMetaService = new LuckPermsNationMetaService(
-                this,
-                nationRegistry,
-                dataStore,
-                gameSyncConfig
-        );
-        this.nationSyncService = new NationSyncService(
-                this,
-                backendClient,
-                nationRegistry,
-                dataStore,
-                economy,
-                gameSyncConfig,
-                territoryPointsResolver
-        );
-        this.syncScheduler = new SyncScheduler(
-                this,
-                nationSyncService,
-                luckPermsNationMetaService,
-                gameSyncConfig
-        );
-        this.skinCommandService = new SkinCommandService(this);
-
+        buildServices();
         registerCommands();
         registerListeners();
 
         if (gameSyncConfig.isSyncEnabled()) {
             syncScheduler.start();
+        }
+        if (gameSyncConfig.isEconomyMarketEnabled()) {
+            economyMarketSyncService.start();
+            economyShopGuiBridgeService.registerIfAvailable();
+            economyShopVisualSyncService.start();
         }
 
         getLogger().info("VoidRpGameSync enabled.");
@@ -94,6 +89,12 @@ public final class VoidRpGameSyncPlugin extends JavaPlugin {
         if (syncScheduler != null) {
             syncScheduler.stop();
         }
+        if (economyMarketSyncService != null) {
+            economyMarketSyncService.stop();
+        }
+        if (economyShopVisualSyncService != null) {
+            economyShopVisualSyncService.stop();
+        }
         if (dataStore != null) {
             dataStore.saveNow();
         }
@@ -102,43 +103,49 @@ public final class VoidRpGameSyncPlugin extends JavaPlugin {
 
     public void reloadPluginState() {
         reloadConfig();
+        if (syncScheduler != null) {
+            syncScheduler.stop();
+        }
+        if (economyMarketSyncService != null) {
+            economyMarketSyncService.stop();
+        }
+        if (economyShopVisualSyncService != null) {
+            economyShopVisualSyncService.stop();
+        }
+        buildServices();
+        if (gameSyncConfig.isSyncEnabled()) {
+            syncScheduler.start();
+        }
+        if (gameSyncConfig.isEconomyMarketEnabled()) {
+            economyMarketSyncService.start();
+            economyShopGuiBridgeService.registerIfAvailable();
+            economyShopVisualSyncService.start();
+        }
+    }
+
+    private void buildServices() {
         this.gameSyncConfig = new GameSyncConfig(this);
+        if (this.dataStore == null) {
+            this.dataStore = new PluginDataStore(this);
+        }
         this.backendClient = new BackendClient(this, gameSyncConfig);
+        this.rewardCacheService = new RewardCacheService(this, dataStore);
         this.nationRegistry = new NationRegistry(this, backendClient, gameSyncConfig);
         this.territoryPointsResolver = new TerritoryPointsResolver(this, dataStore, gameSyncConfig);
-        this.rewardCacheService = new RewardCacheService(this, dataStore);
         this.referralRewardService = new ReferralRewardService(this, backendClient, rewardCacheService, gameSyncConfig);
-        this.luckPermsNationMetaService = new LuckPermsNationMetaService(
-                this,
-                nationRegistry,
-                dataStore,
-                gameSyncConfig
-        );
-        this.nationSyncService = new NationSyncService(
-                this,
-                backendClient,
-                nationRegistry,
-                dataStore,
-                economy,
-                gameSyncConfig,
-                territoryPointsResolver
-        );
-
-        if (this.syncScheduler != null) {
-            this.syncScheduler.stop();
-        }
-
-        this.syncScheduler = new SyncScheduler(
-                this,
-                nationSyncService,
-                luckPermsNationMetaService,
-                gameSyncConfig
-        );
+        this.luckPermsNationMetaService = new LuckPermsNationMetaService(this, nationRegistry, dataStore, gameSyncConfig);
+        this.nationSyncService = new NationSyncService(this, backendClient, nationRegistry, dataStore, economy, gameSyncConfig, territoryPointsResolver);
+        this.syncScheduler = new SyncScheduler(this, nationSyncService, luckPermsNationMetaService, gameSyncConfig);
         this.skinCommandService = new SkinCommandService(this);
 
-        if (gameSyncConfig.isSyncEnabled()) {
-            this.syncScheduler.start();
-        }
+        this.economyMarketCache = new EconomyMarketCache();
+        this.economyMarketSyncService = new EconomyMarketSyncService(this, economyMarketCache);
+        this.economyShopGuiBridgeService = new EconomyShopGuiBridgeService(this);
+        this.economyShopVisualSyncService = new EconomyShopVisualSyncService(this, economyMarketCache);
+        this.itemStackSnapshotService = new ItemStackSnapshotService();
+        this.nationMarketInventoryService = new NationMarketInventoryService(this);
+        this.nationMarketConfirmService = new NationMarketConfirmService();
+        this.nationMarketGuiService = new NationMarketGuiService(this, itemStackSnapshotService, nationMarketInventoryService);
     }
 
     private void registerCommands() {
@@ -160,6 +167,16 @@ public final class VoidRpGameSyncPlugin extends JavaPlugin {
         PlayerNationWithdrawCommand withdrawCommand = new PlayerNationWithdrawCommand(this);
         registerCommand("nationwithdraw", withdrawCommand, withdrawCommand);
         registerCommand("nwithdraw", withdrawCommand, withdrawCommand);
+
+        MarketPriceCommand marketPriceCommand = new MarketPriceCommand(this);
+        registerCommand("marketprice", marketPriceCommand, marketPriceCommand);
+        registerCommand("mprice", marketPriceCommand, marketPriceCommand);
+        registerCommand("price", marketPriceCommand, marketPriceCommand);
+
+        NationMarketCommand nationMarketCommand = new NationMarketCommand(this);
+        registerCommand("nmarket", nationMarketCommand, nationMarketCommand);
+        registerCommand("nationmarket", nationMarketCommand, nationMarketCommand);
+        registerCommand("nm", nationMarketCommand, nationMarketCommand);
     }
 
     private void registerCommand(String name, CommandExecutor executor, TabCompleter completer) {
@@ -172,6 +189,7 @@ public final class VoidRpGameSyncPlugin extends JavaPlugin {
 
     private void registerListeners() {
         Bukkit.getPluginManager().registerEvents(new PlayerJoinRewardListener(this), this);
+        Bukkit.getPluginManager().registerEvents(new NationMarketGuiListener(this), this);
     }
 
     private void setupEconomy() {
@@ -181,9 +199,7 @@ public final class VoidRpGameSyncPlugin extends JavaPlugin {
             return;
         }
 
-        RegisteredServiceProvider<Economy> provider
-                = getServer().getServicesManager().getRegistration(Economy.class);
-
+        RegisteredServiceProvider<Economy> provider = getServer().getServicesManager().getRegistration(Economy.class);
         if (provider == null) {
             getLogger().warning("No Economy provider found via Vault.");
             this.economy = null;
@@ -238,5 +254,37 @@ public final class VoidRpGameSyncPlugin extends JavaPlugin {
 
     public Economy getEconomy() {
         return economy;
+    }
+
+    public EconomyMarketCache getEconomyMarketCache() {
+        return economyMarketCache;
+    }
+
+    public EconomyMarketSyncService getEconomyMarketSyncService() {
+        return economyMarketSyncService;
+    }
+
+    public EconomyShopGuiBridgeService getEconomyShopGuiBridgeService() {
+        return economyShopGuiBridgeService;
+    }
+
+    public EconomyShopVisualSyncService getEconomyShopVisualSyncService() {
+        return economyShopVisualSyncService;
+    }
+
+    public ItemStackSnapshotService getItemStackSnapshotService() {
+        return itemStackSnapshotService;
+    }
+
+    public NationMarketInventoryService getNationMarketInventoryService() {
+        return nationMarketInventoryService;
+    }
+
+    public NationMarketConfirmService getNationMarketConfirmService() {
+        return nationMarketConfirmService;
+    }
+
+    public NationMarketGuiService getNationMarketGuiService() {
+        return nationMarketGuiService;
     }
 }

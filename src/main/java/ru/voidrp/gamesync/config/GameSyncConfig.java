@@ -43,6 +43,45 @@ public final class GameSyncConfig {
     private final boolean clearMissingSkin;
     private final boolean syncOnPlayerJoin;
     private final long playerJoinSyncDelayTicks;
+
+    private final boolean economyMarketEnabled;
+    private final long economyMarketSyncPeriodTicks;
+    private final boolean economyShopGuiBridgeEnabled;
+    private final boolean economyMarketRealPriceEnabled;
+    private final boolean economyMarketApplyBuyPrice;
+    private final boolean economyMarketApplySellPrice;
+    private final boolean economyMarketPushTransactions;
+    private final boolean economyMarketNotifyActionbar;
+    private final boolean economyMarketNotifyChat;
+    private final boolean economyMarketIgnoreOpPlayers;
+    private final boolean economyMarketIgnoreCreativePlayers;
+    private final boolean economyMarketRecordMultiItemTransactions;
+    private final boolean economyMarketVisualSyncEnabled;
+    private final long economyMarketVisualSyncPeriodTicks;
+    private final int economyMarketVisualSyncMinChangesBeforeReload;
+    private final int economyMarketVisualSyncMaxReloadsPerHour;
+    private final int economyMarketVisualSyncMaxItemsPerCycle;
+    private final double economyMarketVisualSyncMinDiffPercent;
+    private final String economyMarketVisualSyncEditCommand;
+    private final String economyMarketVisualSyncReloadCommand;
+    private final boolean economyMarketVisualSyncRunReload;
+    private final boolean nationMarketEnabled;
+    private final double nationMarketFeePercent;
+    private final int nationMarketListingExpireHours;
+    private final int nationMarketMaxListingsPerNation;
+    private final int nationMarketMaxListingsPerPlayer;
+    private final boolean nationMarketAllowCustomItems;
+    private final boolean nationMarketAllowEnchantedItems;
+    private final boolean nationMarketAllowDamagedItems;
+    private final boolean nationMarketAllowShulkerBoxes;
+    private final boolean nationMarketAllowBundles;
+    private final double nationMarketMinAboveServerSellMultiplier;
+    private final double nationMarketWarnBelowMarketMultiplier;
+    private final double nationMarketWarnAboveMarketMultiplier;
+    private final double nationMarketHardMaxMarketMultiplier;
+    private final long nationMarketConfirmTimeoutMs;
+    private final String nationMarketGuiTitle;
+
     private final boolean debugHttp;
     private final boolean verboseSync;
     private final ConfigurationSection rewardBundlesSection;
@@ -96,220 +135,157 @@ public final class GameSyncConfig {
         this.syncOnPlayerJoin = plugin.getConfig().getBoolean("sync.sync-on-player-join", true);
         this.playerJoinSyncDelayTicks = Math.max(1L, plugin.getConfig().getLong("sync.player-join-delay-ticks", 80L));
 
+        this.economyMarketEnabled = plugin.getConfig().getBoolean("economy-market.enabled", true);
+        this.economyMarketSyncPeriodTicks = Math.max(20L, plugin.getConfig().getLong("economy-market.sync.period-seconds", 60L) * 20L);
+        this.economyShopGuiBridgeEnabled = plugin.getConfig().getBoolean("economy-market.economyshopgui.enabled", true);
+        this.economyMarketRealPriceEnabled = plugin.getConfig().getBoolean("economy-market.real-price.enabled", true);
+        this.economyMarketApplyBuyPrice = plugin.getConfig().getBoolean("economy-market.real-price.apply-buy", true);
+        this.economyMarketApplySellPrice = plugin.getConfig().getBoolean("economy-market.real-price.apply-sell", true);
+        this.economyMarketPushTransactions = plugin.getConfig().getBoolean("economy-market.transactions.push", true);
+        this.economyMarketNotifyActionbar = plugin.getConfig().getBoolean("economy-market.player-notify.actionbar", true);
+        this.economyMarketNotifyChat = plugin.getConfig().getBoolean("economy-market.player-notify.chat-on-price-diff", false);
+        this.economyMarketIgnoreOpPlayers = plugin.getConfig().getBoolean("economy-market.abuse-guard.ignore-op-players", true);
+        this.economyMarketIgnoreCreativePlayers = plugin.getConfig().getBoolean("economy-market.abuse-guard.ignore-creative-players", true);
+        this.economyMarketRecordMultiItemTransactions = plugin.getConfig().getBoolean("economy-market.transactions.record-multi-item-events", true);
+        this.economyMarketVisualSyncEnabled = plugin.getConfig().getBoolean("economy-market.visual-sync.enabled", true);
+        this.economyMarketVisualSyncPeriodTicks = Math.max(20L, plugin.getConfig().getLong("economy-market.visual-sync.period-seconds", 300L) * 20L);
+        this.economyMarketVisualSyncMinChangesBeforeReload = Math.max(1, plugin.getConfig().getInt("economy-market.visual-sync.min-changes-before-reload", 1));
+        this.economyMarketVisualSyncMaxReloadsPerHour = Math.max(0, plugin.getConfig().getInt("economy-market.visual-sync.max-reloads-per-hour", 12));
+        this.economyMarketVisualSyncMaxItemsPerCycle = Math.max(1, plugin.getConfig().getInt("economy-market.visual-sync.max-items-per-cycle", 40));
+        this.economyMarketVisualSyncMinDiffPercent = Math.max(0D, plugin.getConfig().getDouble("economy-market.visual-sync.min-diff-percent", 1.0D));
+        this.economyMarketVisualSyncEditCommand = plugin.getConfig().getString("economy-market.visual-sync.edit-command", "editshop");
+        this.economyMarketVisualSyncReloadCommand = plugin.getConfig().getString("economy-market.visual-sync.reload-command", "sreload");
+        this.economyMarketVisualSyncRunReload = plugin.getConfig().getBoolean("economy-market.visual-sync.run-reload-command", true);
+
+        this.nationMarketEnabled = plugin.getConfig().getBoolean("nation-market.enabled", true);
+        this.nationMarketFeePercent = plugin.getConfig().getDouble("nation-market.fee-percent", 3.0D);
+        this.nationMarketListingExpireHours = plugin.getConfig().getInt("nation-market.listing-expire-hours", 72);
+        this.nationMarketMaxListingsPerNation = plugin.getConfig().getInt("nation-market.sell.max-listings-per-nation", 50);
+        this.nationMarketMaxListingsPerPlayer = plugin.getConfig().getInt("nation-market.sell.max-listings-per-player", 15);
+        this.nationMarketAllowCustomItems = plugin.getConfig().getBoolean("nation-market.item-rules.allow-custom-items", false);
+        this.nationMarketAllowEnchantedItems = plugin.getConfig().getBoolean("nation-market.item-rules.allow-enchanted-items", false);
+        this.nationMarketAllowDamagedItems = plugin.getConfig().getBoolean("nation-market.item-rules.allow-damaged-items", false);
+        this.nationMarketAllowShulkerBoxes = plugin.getConfig().getBoolean("nation-market.item-rules.allow-shulker-boxes", false);
+        this.nationMarketAllowBundles = plugin.getConfig().getBoolean("nation-market.item-rules.allow-bundles", false);
+        this.nationMarketMinAboveServerSellMultiplier = plugin.getConfig().getDouble("nation-market.price-guard.min-above-server-sell-multiplier", 1.25D);
+        this.nationMarketWarnBelowMarketMultiplier = plugin.getConfig().getDouble("nation-market.price-guard.warn-below-market-multiplier", 0.65D);
+        this.nationMarketWarnAboveMarketMultiplier = plugin.getConfig().getDouble("nation-market.price-guard.warn-above-market-multiplier", 2.5D);
+        this.nationMarketHardMaxMarketMultiplier = plugin.getConfig().getDouble("nation-market.price-guard.hard-max-market-multiplier", 10.0D);
+        this.nationMarketConfirmTimeoutMs = Math.max(5L, plugin.getConfig().getLong("nation-market.price-guard.confirm-timeout-seconds", 60L)) * 1000L;
+        this.nationMarketGuiTitle = plugin.getConfig().getString("nation-market.gui.title", "Рынок государств");
+
         this.debugHttp = plugin.getConfig().getBoolean("debug.log-http", false);
         this.verboseSync = plugin.getConfig().getBoolean("debug.verbose-sync", false);
 
         this.rewardBundlesSection = plugin.getConfig().getConfigurationSection("reward-bundles");
     }
 
-    public String getBackendBaseUrl() {
-        return backendBaseUrl;
-    }
+    public String getBackendBaseUrl() { return backendBaseUrl; }
+    public String getApiPrefix() { return apiPrefix; }
+    public String getGameAuthSecret() { return gameAuthSecret; }
+    public int getConnectTimeoutMs() { return connectTimeoutMs; }
+    public int getReadTimeoutMs() { return readTimeoutMs; }
+    public boolean isBackendNationSourceEnabled() { return backendNationSourceEnabled; }
+    public boolean isFallbackYmlEnabled() { return fallbackYmlEnabled; }
+    public boolean isSyncEnabled() { return syncEnabled; }
+    public long getSyncPeriodTicks() { return syncPeriodTicks; }
+    public boolean isSyncMembership() { return syncMembership; }
+    public boolean isSyncStats() { return syncStats; }
+    public boolean isStatsOnlineOnly() { return statsOnlineOnly; }
+    public String getTerritorySourceMode() { return territorySourceMode; }
+    public String getTerritoryWorldGuardCountMode() { return territoryWorldGuardCountMode; }
+    public boolean isTerritoryWorldGuardFallbackToManual() { return territoryWorldGuardFallbackToManual; }
+    public boolean isResolveOnJoin() { return resolveOnJoin; }
+    public long getJoinDelayTicks() { return joinDelayTicks; }
+    public boolean isAutoApplyOnJoin() { return autoApplyOnJoin; }
+    public boolean isSuppressDuplicateRewardUntilExpiry() { return suppressDuplicateRewardUntilExpiry; }
+    public boolean isLuckPermsEnabled() { return luckPermsEnabled; }
+    public boolean isApplyNationMetaOnJoin() { return applyNationMetaOnJoin; }
+    public boolean isReconcileNationMetaAfterSync() { return reconcileNationMetaAfterSync; }
+    public String getLuckPermsServerContext() { return luckPermsServerContext; }
+    public boolean isPrefixEnabled() { return prefixEnabled; }
+    public int getPrefixPriority() { return prefixPriority; }
+    public String getPrefixTemplate() { return prefixTemplate; }
+    public boolean isSuffixEnabled() { return suffixEnabled; }
+    public int getSuffixPriority() { return suffixPriority; }
+    public String getSuffixTemplate() { return suffixTemplate; }
+    public String getLeaderLabel() { return leaderLabel; }
+    public String getOfficerLabel() { return officerLabel; }
+    public String getMemberLabel() { return memberLabel; }
+    public boolean isSkinSyncEnabled() { return skinSyncEnabled; }
+    public boolean isSkinApplyOnJoin() { return skinApplyOnJoin; }
+    public long getSkinJoinDelayTicks() { return skinJoinDelayTicks; }
+    public boolean isClearMissingSkin() { return clearMissingSkin; }
+    public boolean isSyncOnPlayerJoin() { return syncOnPlayerJoin; }
+    public long getPlayerJoinSyncDelayTicks() { return playerJoinSyncDelayTicks; }
 
-    public String getApiPrefix() {
-        return apiPrefix;
-    }
+    public boolean isEconomyMarketEnabled() { return economyMarketEnabled; }
+    public long getEconomyMarketSyncPeriodTicks() { return economyMarketSyncPeriodTicks; }
+    public boolean isEconomyShopGuiBridgeEnabled() { return economyShopGuiBridgeEnabled; }
+    public boolean isEconomyMarketRealPriceEnabled() { return economyMarketRealPriceEnabled; }
+    public boolean isEconomyMarketApplyBuyPrice() { return economyMarketApplyBuyPrice; }
+    public boolean isEconomyMarketApplySellPrice() { return economyMarketApplySellPrice; }
+    public boolean isEconomyMarketPushTransactions() { return economyMarketPushTransactions; }
+    public boolean isEconomyMarketNotifyActionbar() { return economyMarketNotifyActionbar; }
+    public boolean isEconomyMarketNotifyChat() { return economyMarketNotifyChat; }
+    public boolean isEconomyMarketIgnoreOpPlayers() { return economyMarketIgnoreOpPlayers; }
+    public boolean isEconomyMarketIgnoreCreativePlayers() { return economyMarketIgnoreCreativePlayers; }
+    public boolean isEconomyMarketRecordMultiItemTransactions() { return economyMarketRecordMultiItemTransactions; }
+    public boolean isEconomyMarketVisualSyncEnabled() { return economyMarketVisualSyncEnabled; }
+    public long getEconomyMarketVisualSyncPeriodTicks() { return economyMarketVisualSyncPeriodTicks; }
+    public int getEconomyMarketVisualSyncMinChangesBeforeReload() { return economyMarketVisualSyncMinChangesBeforeReload; }
+    public int getEconomyMarketVisualSyncMaxReloadsPerHour() { return economyMarketVisualSyncMaxReloadsPerHour; }
+    public int getEconomyMarketVisualSyncMaxItemsPerCycle() { return economyMarketVisualSyncMaxItemsPerCycle; }
+    public double getEconomyMarketVisualSyncMinDiffPercent() { return economyMarketVisualSyncMinDiffPercent; }
+    public String getEconomyMarketVisualSyncEditCommand() { return economyMarketVisualSyncEditCommand; }
+    public String getEconomyMarketVisualSyncReloadCommand() { return economyMarketVisualSyncReloadCommand; }
+    public boolean isEconomyMarketVisualSyncRunReload() { return economyMarketVisualSyncRunReload; }
+    public boolean isNationMarketEnabled() { return nationMarketEnabled; }
+    public double getNationMarketFeePercent() { return nationMarketFeePercent; }
+    public int getNationMarketListingExpireHours() { return nationMarketListingExpireHours; }
+    public int getNationMarketMaxListingsPerNation() { return nationMarketMaxListingsPerNation; }
+    public int getNationMarketMaxListingsPerPlayer() { return nationMarketMaxListingsPerPlayer; }
+    public boolean isNationMarketAllowCustomItems() { return nationMarketAllowCustomItems; }
+    public boolean isNationMarketAllowEnchantedItems() { return nationMarketAllowEnchantedItems; }
+    public boolean isNationMarketAllowDamagedItems() { return nationMarketAllowDamagedItems; }
+    public boolean isNationMarketAllowShulkerBoxes() { return nationMarketAllowShulkerBoxes; }
+    public boolean isNationMarketAllowBundles() { return nationMarketAllowBundles; }
+    public double getNationMarketMinAboveServerSellMultiplier() { return nationMarketMinAboveServerSellMultiplier; }
+    public double getNationMarketWarnBelowMarketMultiplier() { return nationMarketWarnBelowMarketMultiplier; }
+    public double getNationMarketWarnAboveMarketMultiplier() { return nationMarketWarnAboveMarketMultiplier; }
+    public double getNationMarketHardMaxMarketMultiplier() { return nationMarketHardMaxMarketMultiplier; }
+    public long getNationMarketConfirmTimeoutMs() { return nationMarketConfirmTimeoutMs; }
+    public String getNationMarketGuiTitle() { return nationMarketGuiTitle; }
 
-    public String getGameAuthSecret() {
-        return gameAuthSecret;
-    }
-
-    public int getConnectTimeoutMs() {
-        return connectTimeoutMs;
-    }
-
-    public int getReadTimeoutMs() {
-        return readTimeoutMs;
-    }
-
-    public boolean isBackendNationSourceEnabled() {
-        return backendNationSourceEnabled;
-    }
-
-    public boolean isFallbackYmlEnabled() {
-        return fallbackYmlEnabled;
-    }
-
-    public boolean isSyncEnabled() {
-        return syncEnabled;
-    }
-
-    public long getSyncPeriodTicks() {
-        return syncPeriodTicks;
-    }
-
-    public boolean isSyncMembership() {
-        return syncMembership;
-    }
-
-    public boolean isSyncStats() {
-        return syncStats;
-    }
-
-    public boolean isStatsOnlineOnly() {
-        return statsOnlineOnly;
-    }
-
-    public String getTerritorySourceMode() {
-        return territorySourceMode;
-    }
-
-    public String getTerritoryWorldGuardCountMode() {
-        return territoryWorldGuardCountMode;
-    }
-
-    public boolean isTerritoryWorldGuardFallbackToManual() {
-        return territoryWorldGuardFallbackToManual;
-    }
-
-    public boolean isResolveOnJoin() {
-        return resolveOnJoin;
-    }
-
-    public long getJoinDelayTicks() {
-        return joinDelayTicks;
-    }
-
-    public boolean isAutoApplyOnJoin() {
-        return autoApplyOnJoin;
-    }
-
-    public boolean isSuppressDuplicateRewardUntilExpiry() {
-        return suppressDuplicateRewardUntilExpiry;
-    }
-
-    public boolean isLuckPermsEnabled() {
-        return luckPermsEnabled;
-    }
-
-    public boolean isApplyNationMetaOnJoin() {
-        return applyNationMetaOnJoin;
-    }
-
-    public boolean isReconcileNationMetaAfterSync() {
-        return reconcileNationMetaAfterSync;
-    }
-
-    public String getLuckPermsServerContext() {
-        return luckPermsServerContext;
-    }
-
-    public boolean isPrefixEnabled() {
-        return prefixEnabled;
-    }
-
-    public int getPrefixPriority() {
-        return prefixPriority;
-    }
-
-    public String getPrefixTemplate() {
-        return prefixTemplate;
-    }
-
-    public boolean isSuffixEnabled() {
-        return suffixEnabled;
-    }
-
-    public int getSuffixPriority() {
-        return suffixPriority;
-    }
-
-    public String getSuffixTemplate() {
-        return suffixTemplate;
-    }
-
-    public String getLeaderLabel() {
-        return leaderLabel;
-    }
-
-    public String getOfficerLabel() {
-        return officerLabel;
-    }
-
-    public String getMemberLabel() {
-        return memberLabel;
-    }
-
-    public boolean isSkinSyncEnabled() {
-        return skinSyncEnabled;
-    }
-
-    public boolean isSkinApplyOnJoin() {
-        return skinApplyOnJoin;
-    }
-
-    public long getSkinJoinDelayTicks() {
-        return skinJoinDelayTicks;
-    }
-
-    public boolean isClearMissingSkin() {
-        return clearMissingSkin;
-    }
-
-    public boolean isSyncOnPlayerJoin() {
-        return syncOnPlayerJoin;
-    }
-
-    public long getPlayerJoinSyncDelayTicks() {
-        return playerJoinSyncDelayTicks;
-    }
-
-    public boolean isDebugHttp() {
-        return debugHttp;
-    }
-
-    public boolean isVerboseSync() {
-        return verboseSync;
-    }
-
-    public ConfigurationSection getRewardBundlesSection() {
-        return rewardBundlesSection;
-    }
+    public boolean isDebugHttp() { return debugHttp; }
+    public boolean isVerboseSync() { return verboseSync; }
+    public ConfigurationSection getRewardBundlesSection() { return rewardBundlesSection; }
 
     public java.util.List<String> getRewardCommands(String bundleKey) {
-        if (bundleKey == null || bundleKey.isBlank()) {
-            return java.util.List.of();
-        }
-
+        if (bundleKey == null || bundleKey.isBlank()) return java.util.List.of();
         String path = "reward-bundles." + bundleKey + ".commands";
         java.util.List<String> commands = plugin.getConfig().getStringList(path);
-        if (commands == null || commands.isEmpty()) {
-            return java.util.List.of();
-        }
+        if (commands == null || commands.isEmpty()) return java.util.List.of();
         return java.util.List.copyOf(commands);
     }
 
     public String roleDisplay(String role) {
-        if (role == null || role.isBlank()) {
-            return "Участник";
-        }
-
+        if (role == null || role.isBlank()) return "Участник";
         String normalized = role.trim().toLowerCase(java.util.Locale.ROOT);
         String configured = plugin.getConfig().getString("luckperms.role-labels." + normalized);
-        if (configured != null && !configured.isBlank()) {
-            return configured;
-        }
-
+        if (configured != null && !configured.isBlank()) return configured;
         return switch (normalized) {
-            case "leader" ->
-                "Лидер";
-            case "officer" ->
-                "Офицер";
-            case "member" ->
-                "Участник";
-            default ->
-                role;
+            case "leader" -> "Лидер";
+            case "officer" -> "Офицер";
+            case "member" -> "Участник";
+            default -> role;
         };
     }
 
     private String trimTrailingSlash(String value) {
-        if (value == null || value.isBlank()) {
-            return "";
-        }
+        if (value == null || value.isBlank()) return "";
         String result = value.trim();
-        while (result.endsWith("/")) {
-            result = result.substring(0, result.length() - 1);
-        }
+        while (result.endsWith("/")) result = result.substring(0, result.length() - 1);
         return result;
     }
 }

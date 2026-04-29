@@ -1,5 +1,5 @@
 name: VoidRpGameSync
-version: 1.1.0
+version: 1.3.0
 main: ru.voidrp.gamesync.VoidRpGameSyncPlugin
 api-version: "1.21"
 depend:
@@ -8,6 +8,8 @@ softdepend:
   - LuckPerms
   - WorldGuard
   - SkinsRestorer
+  - EconomyShopGUI
+  - EconomyShopGUI-Premium
 
 commands:
   vrgs:
@@ -34,6 +36,16 @@ commands:
     usage: /nationwithdraw <amount> [comment]
     permission: voidrp.gamesync.treasury.manage
     aliases: [nwithdraw]
+  marketprice:
+    description: Show current VoidRP market price
+    usage: /marketprice [material]
+    permission: voidrp.market.price
+    aliases: [mprice, price]
+  nmarket:
+    description: VoidRP nation market
+    usage: /nmarket
+    permission: voidrp.nmarket.use
+    aliases: [nationmarket, nm]
 
 permissions:
   voidrp.gamesync.admin:
@@ -43,4 +55,12 @@ permissions:
   voidrp.gamesync.treasury.view:
     default: true
   voidrp.gamesync.treasury.manage:
+    default: op
+  voidrp.market.price:
+    default: true
+  voidrp.nmarket.use:
+    default: true
+  voidrp.nmarket.sell:
+    default: true
+  voidrp.nmarket.admin:
     default: op

@@ -12,6 +12,7 @@ import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 
 import ru.voidrp.gamesync.VoidRpGameSyncPlugin;
+import ru.voidrp.gamesync.model.MarketPriceItem;
 import ru.voidrp.gamesync.model.PlayerSkinResponse;
 import ru.voidrp.gamesync.service.TerritoryPointsResolver.TerritoryDebugReport;
 import ru.voidrp.gamesync.service.TerritoryPointsResolver.TerritoryMatch;
@@ -60,10 +61,89 @@ public final class VoidRpAdminCommand implements CommandExecutor, TabCompleter {
                 handleReward(sender, args);
                 return true;
             }
+            case "market" -> {
+                handleMarket(sender, args);
+                return true;
+            }
             default -> {
                 sendHelp(sender);
                 return true;
             }
+        }
+    }
+
+    private void handleMarket(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage("§eИспользование: /vrgs market <status|reload|recalculate|visual-sync|price> [material]");
+            return;
+        }
+
+        String mode = args[1].toLowerCase(Locale.ROOT);
+        switch (mode) {
+            case "status" -> {
+                sender.sendMessage("§6=== VoidRP Market Status ===");
+                boolean bridgeRegistered = plugin.getEconomyShopGuiBridgeService() != null && plugin.getEconomyShopGuiBridgeService().isRegistered();
+                boolean esguiPresent = plugin.getEconomyShopGuiBridgeService() != null && plugin.getEconomyShopGuiBridgeService().isEconomyShopGuiPresent();
+                sender.sendMessage("§7EconomyShopGUI: §f" + (esguiPresent ? "найден" : "не найден"));
+                sender.sendMessage("§7Bridge: §f" + (bridgeRegistered ? "активен" : "не активен"));
+                sender.sendMessage("§7Cache items: §f" + plugin.getEconomyMarketCache().all().size());
+                sender.sendMessage("§7Cache refresh: §f" + age(plugin.getEconomyMarketCache().lastRefreshMs()));
+                if (plugin.getEconomyMarketSyncService() != null && plugin.getEconomyMarketSyncService().getLastError() != null && !plugin.getEconomyMarketSyncService().getLastError().isBlank()) {
+                    sender.sendMessage("§7Last sync error: §c" + plugin.getEconomyMarketSyncService().getLastError());
+                }
+                if (plugin.getEconomyShopVisualSyncService() != null) {
+                    sender.sendMessage("§7Visual sync: §f" + plugin.getEconomyShopVisualSyncService().getLastMessage());
+                    sender.sendMessage("§7Visual pending: §f" + plugin.getEconomyShopVisualSyncService().getPendingChangedItems());
+                    sender.sendMessage("§7Visual reloads: §f" + plugin.getEconomyShopVisualSyncService().getTotalReloads());
+                }
+            }
+            case "reload" -> {
+                sender.sendMessage("§7Обновляем рыночные цены из backend...");
+                Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                    boolean ok = plugin.getEconomyMarketSyncService().refreshQuietly();
+                    Bukkit.getScheduler().runTask(plugin, () -> sender.sendMessage(ok ? "§aMarket cache обновлён." : "§cНе удалось обновить market cache."));
+                });
+            }
+            case "recalculate" -> {
+                sender.sendMessage("§7Запускаем backend-пересчёт цен...");
+                Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                    try {
+                        var response = plugin.getBackendClient().recalculateMarketPrices(true);
+                        plugin.getEconomyMarketSyncService().refreshQuietly();
+                        Bukkit.getScheduler().runTask(plugin, () -> sender.sendMessage("§aПересчёт завершён. Всего: §f" + response.total + "§a, изменено: §f" + response.changed));
+                    } catch (Exception exception) {
+                        Bukkit.getScheduler().runTask(plugin, () -> sender.sendMessage("§cПересчёт не выполнен: §f" + exception.getMessage()));
+                    }
+                });
+            }
+            case "visual-sync" -> {
+                if (plugin.getEconomyShopVisualSyncService() == null) {
+                    sender.sendMessage("§cVisual sync service недоступен.");
+                    return;
+                }
+                sender.sendMessage("§7Запускаем визуальный sync EconomyShopGUI...");
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    var result = plugin.getEconomyShopVisualSyncService().runOnce(true);
+                    sender.sendMessage("§aVisual sync: §f" + result.message());
+                });
+            }
+            case "price" -> {
+                if (args.length < 3) {
+                    sender.sendMessage("§eИспользование: /vrgs market price <material>");
+                    return;
+                }
+                MarketPriceItem item = plugin.getEconomyMarketCache().get(args[2]);
+                if (item == null) {
+                    sender.sendMessage("§eНет цены в cache по предмету: §f" + args[2]);
+                    return;
+                }
+                sender.sendMessage("§6=== " + item.material + " ===");
+                sender.sendMessage("§7Buy: §a" + money(item.current_buy_price) + " §8x" + money(item.buy_multiplier));
+                sender.sendMessage("§7Sell: §e" + money(item.current_sell_price) + " §8x" + money(item.sell_multiplier));
+                sender.sendMessage("§7Shop: §f" + value(item.shop_section) + " §8/ §f" + value(item.shop_item_index));
+                sender.sendMessage("§7Demand/Supply: §f" + money(item.demand_score) + "§8/§f" + money(item.supply_score));
+            }
+            default -> sender.sendMessage("§eИспользование: /vrgs market <status|reload|recalculate|visual-sync|price> [material]");
         }
     }
 
@@ -238,7 +318,7 @@ public final class VoidRpAdminCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length == 1) {
-            return filter(List.of("reload", "sync", "skin", "territory", "reward"), args[0]);
+            return filter(List.of("reload", "sync", "skin", "territory", "reward", "market"), args[0]);
         }
 
         if (args.length == 2) {
@@ -247,6 +327,7 @@ public final class VoidRpAdminCommand implements CommandExecutor, TabCompleter {
                 case "skin" -> filter(List.of("refresh", "clear"), args[1]);
                 case "territory" -> filter(List.of("debug"), args[1]);
                 case "reward" -> filter(List.of("resolve", "apply"), args[1]);
+                case "market" -> filter(List.of("status", "reload", "recalculate", "visual-sync", "price"), args[1]);
                 default -> List.of();
             };
         }
@@ -285,4 +366,21 @@ public final class VoidRpAdminCommand implements CommandExecutor, TabCompleter {
                 .sorted()
                 .toList();
     }
+    private String money(double value) {
+        return String.format(Locale.US, "%.2f", Math.round(value * 100.0D) / 100.0D);
+    }
+
+    private String value(String value) {
+        return value == null || value.isBlank() ? "-" : value;
+    }
+
+    private String age(long epochMs) {
+        if (epochMs <= 0L) return "никогда";
+        long seconds = Math.max(0L, (System.currentTimeMillis() - epochMs) / 1000L);
+        if (seconds < 60L) return seconds + " сек. назад";
+        long minutes = seconds / 60L;
+        if (minutes < 60L) return minutes + " мин. назад";
+        return (minutes / 60L) + " ч. назад";
+    }
+
 }

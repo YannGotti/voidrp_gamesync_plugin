@@ -18,7 +18,17 @@ import ru.voidrp.gamesync.config.GameSyncConfig;
 import ru.voidrp.gamesync.model.GameNationDonationRequest;
 import ru.voidrp.gamesync.model.GameNationListResponse;
 import ru.voidrp.gamesync.model.GameNationTreasuryWithdrawRequest;
+import ru.voidrp.gamesync.model.MarketPriceItem;
+import ru.voidrp.gamesync.model.MarketPriceSnapshotResponse;
+import ru.voidrp.gamesync.model.MarketTransactionPushRequest;
 import ru.voidrp.gamesync.model.NationDefinition;
+import ru.voidrp.gamesync.model.NationMarketCancelRequest;
+import ru.voidrp.gamesync.model.NationMarketCancelResponse;
+import ru.voidrp.gamesync.model.NationMarketCreateRequest;
+import ru.voidrp.gamesync.model.NationMarketListing;
+import ru.voidrp.gamesync.model.NationMarketListingListResponse;
+import ru.voidrp.gamesync.model.NationMarketPurchaseRequest;
+import ru.voidrp.gamesync.model.NationMarketPurchaseResponse;
 import ru.voidrp.gamesync.model.NationMemberStatsSyncRequest;
 import ru.voidrp.gamesync.model.NationStatsPayload;
 import ru.voidrp.gamesync.model.PlayerSkinResponse;
@@ -113,6 +123,61 @@ public final class BackendClient {
         return gson.fromJson(response.body(), ReferralResolveResponse.class);
     }
 
+    public MarketPriceSnapshotResponse fetchMarketPrices() throws IOException, InterruptedException {
+        String url = apiUrl("/game-sync/economy/prices");
+        HttpResponse<String> response = get(url);
+        return gson.fromJson(response.body(), MarketPriceSnapshotResponse.class);
+    }
+
+    public MarketPriceItem getMarketPrice(String material) throws IOException, InterruptedException {
+        String url = apiUrl("/game-sync/economy/prices/" + encode(material));
+        HttpResponse<String> response = get(url);
+        return gson.fromJson(response.body(), MarketPriceItem.class);
+    }
+
+    public void pushMarketTransaction(MarketTransactionPushRequest payload) throws IOException, InterruptedException {
+        String url = apiUrl("/game-sync/economy/transactions");
+        postJson(url, gson.toJson(payload), "Market transaction push failed");
+    }
+
+    public MarketRecalculateResponse recalculateMarketPrices(boolean decayScores) throws IOException, InterruptedException {
+        String url = apiUrl("/game-sync/economy/recalculate?decay_scores=" + decayScores);
+        HttpResponse<String> response = postJsonForResponse(url, "{}", "Market recalculation failed");
+        return gson.fromJson(response.body(), MarketRecalculateResponse.class);
+    }
+
+    public NationMarketListing createNationMarketListing(NationMarketCreateRequest payload) throws IOException, InterruptedException {
+        String url = apiUrl("/game-sync/nation-market/listings");
+        HttpResponse<String> response = postJsonForResponse(url, gson.toJson(payload), "Nation market listing create failed");
+        return gson.fromJson(response.body(), NationMarketListing.class);
+    }
+
+    public NationMarketListingListResponse listNationMarketListings() throws IOException, InterruptedException {
+        String url = apiUrl("/game-sync/nation-market/listings");
+        HttpResponse<String> response = get(url);
+        return gson.fromJson(response.body(), NationMarketListingListResponse.class);
+    }
+
+    public NationMarketListingListResponse listNationMarketListings(String nationSlug, boolean includeInactive) throws IOException, InterruptedException {
+        String path = "/game-sync/nation-market/listings?nation_slug=" + encode(nationSlug) + "&include_inactive=" + includeInactive;
+        HttpResponse<String> response = get(apiUrl(path));
+        return gson.fromJson(response.body(), NationMarketListingListResponse.class);
+    }
+
+    public NationMarketPurchaseResponse purchaseNationMarketListing(String listingId, NationMarketPurchaseRequest payload)
+            throws IOException, InterruptedException {
+        String url = apiUrl("/game-sync/nation-market/listings/" + encode(listingId) + "/purchase");
+        HttpResponse<String> response = postJsonForResponse(url, gson.toJson(payload), "Nation market purchase failed");
+        return gson.fromJson(response.body(), NationMarketPurchaseResponse.class);
+    }
+
+    public NationMarketCancelResponse cancelNationMarketListing(String listingId, NationMarketCancelRequest payload)
+            throws IOException, InterruptedException {
+        String url = apiUrl("/game-sync/nation-market/listings/" + encode(listingId) + "/cancel");
+        HttpResponse<String> response = postJsonForResponse(url, gson.toJson(payload), "Nation market cancel failed");
+        return gson.fromJson(response.body(), NationMarketCancelResponse.class);
+    }
+
     private HttpResponse<String> get(String url) throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofMillis(config.getReadTimeoutMs()))
@@ -134,22 +199,7 @@ public final class BackendClient {
     }
 
     private void postJson(String url, String json, String messagePrefix) throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
-                .timeout(Duration.ofMillis(config.getReadTimeoutMs()))
-                .header("Content-Type", "application/json")
-                .header("X-Game-Auth-Secret", config.getGameAuthSecret())
-                .POST(HttpRequest.BodyPublishers.ofString(json))
-                .build();
-
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-        if (config.isDebugHttp()) {
-            plugin.getLogger().info("[HTTP] POST " + url + " -> " + response.statusCode() + " body=" + response.body());
-        }
-
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IOException(messagePrefix + " with status " + response.statusCode() + ": " + response.body());
-        }
+        postJsonForResponse(url, json, messagePrefix);
     }
 
     private HttpResponse<String> postJsonForResponse(String url, String json, String messagePrefix)
@@ -195,19 +245,20 @@ public final class BackendClient {
             java.util.List<String> officers,
             java.util.List<String> members,
             boolean prune_missing
-            ) {
+    ) {}
 
+    public static final class MarketRecalculateResponse {
+        public int total;
+        public int changed;
     }
 
     public static final class NationTreasuryActionResponse {
-
         public String message;
         public String nation_slug;
         public double new_treasury_balance;
     }
 
     public static final class NationTreasurySummaryResponse {
-
         public String nation_id;
         public double treasury_balance;
         public int territory_points;
@@ -224,13 +275,11 @@ public final class BackendClient {
     }
 
     public static final class NationTreasuryTransactionListResponse {
-
         public int total;
         public java.util.List<NationTreasuryTransactionItem> items;
     }
 
     public static final class NationTreasuryTransactionItem {
-
         public String id;
         public String transaction_type;
         public double gross_amount;

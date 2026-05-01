@@ -12,7 +12,8 @@ public record PlayerStatSnapshot(
     @SerializedName("blocks_broken") long blocksBroken,
     @SerializedName("current_balance") double currentBalance,
     @SerializedName("source") String source,
-    @SerializedName("last_seen_at") String lastSeenAt
+    @SerializedName("last_seen_at") String lastSeenAt,
+    @SerializedName("completed_quests") int completedQuests
 ) {}
 
 

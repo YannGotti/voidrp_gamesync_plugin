@@ -8,6 +8,8 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
@@ -158,13 +160,15 @@ public final class NationSyncService {
             return null;
         }
 
-        PlayerStatSnapshot live = readLiveSnapshot(offlinePlayer, nickname);
+        int completedQuests = countCompletedQuests(uuid);
+
+        PlayerStatSnapshot live = readLiveSnapshot(offlinePlayer, nickname, completedQuests);
         if (live != null) {
             dataStore.setPlayerStatSnapshot(uuid, live);
             return live;
         }
 
-        PlayerStatSnapshot fromFile = readFileSnapshot(offlinePlayer, nickname);
+        PlayerStatSnapshot fromFile = readFileSnapshot(offlinePlayer, nickname, completedQuests);
         if (fromFile != null) {
             dataStore.setPlayerStatSnapshot(uuid, fromFile);
             return fromFile;
@@ -182,7 +186,8 @@ public final class NationSyncService {
                     cached.blocksBroken(),
                     cached.currentBalance(),
                     "cached",
-                    cached.lastSeenAt()
+                    cached.lastSeenAt(),
+                    completedQuests
             );
         }
 
@@ -200,11 +205,12 @@ public final class NationSyncService {
                 0L,
                 0D,
                 "missing",
-                null
+                null,
+                0
         );
     }
 
-    private PlayerStatSnapshot readLiveSnapshot(OfflinePlayer offlinePlayer, String nickname) {
+    private PlayerStatSnapshot readLiveSnapshot(OfflinePlayer offlinePlayer, String nickname, int completedQuests) {
         Player onlinePlayer = Bukkit.getPlayer(offlinePlayer.getUniqueId());
         if (onlinePlayer == null) {
             return null;
@@ -228,11 +234,12 @@ public final class NationSyncService {
                 blocksBroken,
                 currentBalance,
                 "live",
-                Instant.now().toString()
+                Instant.now().toString(),
+                completedQuests
         );
     }
 
-    private PlayerStatSnapshot readFileSnapshot(OfflinePlayer offlinePlayer, String nickname) {
+    private PlayerStatSnapshot readFileSnapshot(OfflinePlayer offlinePlayer, String nickname, int completedQuests) {
         if (config.isStatsOnlineOnly()) {
             return null;
         }
@@ -265,7 +272,8 @@ public final class NationSyncService {
                 blocksBroken,
                 currentBalance,
                 "stats_file",
-                lastSeenAt
+                lastSeenAt,
+                completedQuests
         );
     }
 
@@ -467,5 +475,46 @@ public final class NationSyncService {
             return null;
         }
         return value.getAsJsonObject();
+    }
+
+    // FTB Quests SNBT format: completed: { "hexId": timestampL, ... }
+    private static final Pattern FTB_COMPLETED_BLOCK = Pattern.compile(
+        "\\bcompleted\\s*:\\s*\\{([^}]*?)\\}", Pattern.DOTALL
+    );
+    private static final Pattern FTB_QUEST_ENTRY = Pattern.compile("\"[0-9A-Fa-f]+\"");
+
+    private int countCompletedQuests(UUID uuid) {
+        try {
+            Path path = resolveFtbQuestsFile(uuid);
+            if (path == null || !Files.exists(path)) {
+                return 0;
+            }
+            String content = Files.readString(path, StandardCharsets.UTF_8);
+            Matcher blockMatcher = FTB_COMPLETED_BLOCK.matcher(content);
+            if (!blockMatcher.find()) {
+                return 0;
+            }
+            String block = blockMatcher.group(1);
+            Matcher entryMatcher = FTB_QUEST_ENTRY.matcher(block);
+            int count = 0;
+            while (entryMatcher.find()) {
+                count++;
+            }
+            return count;
+        } catch (Exception e) {
+            if (config.isVerboseSync()) {
+                plugin.getLogger().warning("Failed to read FTB Quests data for " + uuid + ": " + e.getMessage());
+            }
+            return 0;
+        }
+    }
+
+    private Path resolveFtbQuestsFile(UUID uuid) {
+        List<World> worlds = Bukkit.getWorlds();
+        if (worlds.isEmpty()) {
+            return null;
+        }
+        Path worldPath = worlds.get(0).getWorldFolder().toPath();
+        return worldPath.resolve("ftbquests/quests/progress/" + uuid + "/data.snbt");
     }
 }

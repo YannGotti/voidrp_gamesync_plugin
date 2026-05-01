@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -229,11 +230,31 @@ public final class NationMarketCommand implements CommandExecutor, TabCompleter 
     }
 
     private boolean handleCancel(Player player, String[] args) {
+        if (!player.hasPermission("voidrp.nmarket.sell")) {
+            player.sendMessage("§cНет прав на управление лотами.");
+            return true;
+        }
         if (args.length < 2) {
             player.sendMessage("§eИспользование: /nmarket cancel <id>");
             return true;
         }
+        NationDefinition nation = plugin.getNationRegistry().findByPlayer(player.getName());
+        if (nation == null) {
+            player.sendMessage("§cТы не состоишь в государстве.");
+            return true;
+        }
+        String role = nation.roleFor(player.getName());
+        if (role == null || (!role.equalsIgnoreCase("leader") && !role.equalsIgnoreCase("officer"))) {
+            player.sendMessage("§cОтменять лоты могут только глава и офицеры государства.");
+            return true;
+        }
         String id = args[1];
+        try {
+            UUID.fromString(id);
+        } catch (IllegalArgumentException exception) {
+            player.sendMessage("§cНеверный формат ID лота.");
+            return true;
+        }
         player.sendMessage("§7Отменяем лот...");
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {

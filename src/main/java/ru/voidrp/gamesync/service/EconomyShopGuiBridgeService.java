@@ -113,6 +113,7 @@ public final class EconomyShopGuiBridgeService {
     }
 
     private void handlePreTransaction(Event event) throws Exception {
+        if (!PRE_EVENT.equals(event.getClass().getName())) return;
         if (!plugin.getGameSyncConfig().isEconomyMarketRealPriceEnabled()) {
             return;
         }
@@ -177,6 +178,7 @@ public final class EconomyShopGuiBridgeService {
     }
 
     private void handlePostTransaction(Event event) throws Exception {
+        if (!POST_EVENT.equals(event.getClass().getName())) return;
         if (!plugin.getGameSyncConfig().isEconomyMarketPushTransactions()) {
             return;
         }

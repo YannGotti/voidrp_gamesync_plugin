@@ -244,7 +244,7 @@ public final class BackendClient {
             String leader_minecraft_nickname,
             java.util.List<String> officers,
             java.util.List<String> members,
-            boolean prune_missing
+            boolean replace_missing
     ) {}
 
     public static final class MarketRecalculateResponse {

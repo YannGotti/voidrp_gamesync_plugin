@@ -184,9 +184,9 @@ public final class NationMarketGuiService {
                         double diff = round2(actualTotal - expectedTotal);
                         EconomyResponse extra = plugin.getEconomy().withdrawPlayer(player, diff);
                         if (extra == null || !extra.transactionSuccess()) {
-                            plugin.getEconomy().depositPlayer(player, expectedTotal);
-                            player.sendMessage("§cЦена изменилась, а доплату списать не удалось. Покупка отменена локально, проверь рынок заново.");
-                            return;
+                            // Backend committed — must still give items to avoid item loss.
+                            // Absorb the small price difference (≤2% by backend contract).
+                            plugin.getLogger().warning("Could not collect extra " + diff + " from " + player.getName() + " for nation market purchase. Absorbed.");
                         }
                     }
 

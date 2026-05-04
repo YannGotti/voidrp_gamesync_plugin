@@ -28,6 +28,7 @@ dependencies {
 
     compileOnly("com.sk89q.worldguard:worldguard-bukkit:7.0.10")
     compileOnly("com.sk89q.worldedit:worldedit-bukkit:7.3.0")
+    compileOnly(files("../minecraft_server/plugins/Dynmap-3.7-beta-8-spigot.jar"))
 
     implementation("com.google.code.gson:gson:2.11.0")
 }

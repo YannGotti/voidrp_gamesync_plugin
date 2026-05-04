@@ -7,6 +7,8 @@ depend:
 softdepend:
   - LuckPerms
   - WorldGuard
+  - dynmap
+  - Dynmap-WorldGuard
   - SkinsRestorer
   - EconomyShopGUI
   - EconomyShopGUI-Premium
@@ -46,6 +48,10 @@ commands:
     usage: /nmarket
     permission: voidrp.nmarket.use
     aliases: [nationmarket, nm]
+  nsetcapital:
+    description: Set your nation capital at your current location
+    usage: /nsetcapital
+    permission: voidrp.gamesync.setcapital
 
 permissions:
   voidrp.gamesync.admin:
@@ -64,3 +70,5 @@ permissions:
     default: true
   voidrp.nmarket.admin:
     default: op
+  voidrp.gamesync.setcapital:
+    default: true

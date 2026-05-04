@@ -105,7 +105,11 @@ public final class NationRegistry {
             leader,
             officers,
             members,
-            0, 0, 0, 0
+            0, 0, 0, 0,
+            snapshot.accent_color,
+            snapshot.capital_x,
+            snapshot.capital_z,
+            snapshot.capital_world
         );
     }
 
@@ -135,7 +139,8 @@ public final class NationRegistry {
 
             NationDefinition definition = new NationDefinition(
                 slug, title, tag, leader, officers, members,
-                territoryPoints, bossKills, eventsCompleted, prestigeBonus
+                territoryPoints, bossKills, eventsCompleted, prestigeBonus,
+                null, null, null, null
             );
             loaded.put(slug, definition);
         }

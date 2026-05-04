@@ -10,6 +10,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import net.milkbowl.vault.economy.Economy;
 import ru.voidrp.gamesync.command.MarketPriceCommand;
 import ru.voidrp.gamesync.command.NationMarketCommand;
+import ru.voidrp.gamesync.command.NationSetCapitalCommand;
 import ru.voidrp.gamesync.command.PlayerNationDonateCommand;
 import ru.voidrp.gamesync.command.PlayerNationTreasuryCommand;
 import ru.voidrp.gamesync.command.PlayerNationTreasuryHistoryCommand;
@@ -32,6 +33,8 @@ import ru.voidrp.gamesync.service.NationMarketInventoryService;
 import ru.voidrp.gamesync.service.NationSyncService;
 import ru.voidrp.gamesync.service.ReferralRewardService;
 import ru.voidrp.gamesync.service.RewardCacheService;
+import ru.voidrp.gamesync.service.DynmapMarkerService;
+import ru.voidrp.gamesync.service.DynmapWorldGuardStyleService;
 import ru.voidrp.gamesync.service.SkinCommandService;
 import ru.voidrp.gamesync.service.SyncScheduler;
 import ru.voidrp.gamesync.service.TerritoryPointsResolver;
@@ -50,6 +53,8 @@ public final class VoidRpGameSyncPlugin extends JavaPlugin {
     private NationSyncService nationSyncService;
     private SyncScheduler syncScheduler;
     private SkinCommandService skinCommandService;
+    private DynmapMarkerService dynmapMarkerService;
+    private DynmapWorldGuardStyleService dynmapWgStyleService;
     private Economy economy;
 
     private EconomyMarketCache economyMarketCache;
@@ -134,7 +139,10 @@ public final class VoidRpGameSyncPlugin extends JavaPlugin {
         this.territoryPointsResolver = new TerritoryPointsResolver(this, dataStore, gameSyncConfig);
         this.referralRewardService = new ReferralRewardService(this, backendClient, rewardCacheService, gameSyncConfig);
         this.luckPermsNationMetaService = new LuckPermsNationMetaService(this, nationRegistry, dataStore, gameSyncConfig);
-        this.nationSyncService = new NationSyncService(this, backendClient, nationRegistry, dataStore, economy, gameSyncConfig, territoryPointsResolver);
+        this.dynmapMarkerService = new DynmapMarkerService(this);
+        this.dynmapWgStyleService = new DynmapWorldGuardStyleService(this);
+        this.dynmapMarkerService.initialize();
+        this.nationSyncService = new NationSyncService(this, backendClient, nationRegistry, dataStore, economy, gameSyncConfig, territoryPointsResolver, dynmapMarkerService, dynmapWgStyleService);
         this.syncScheduler = new SyncScheduler(this, nationSyncService, luckPermsNationMetaService, gameSyncConfig);
         this.skinCommandService = new SkinCommandService(this);
 
@@ -177,6 +185,9 @@ public final class VoidRpGameSyncPlugin extends JavaPlugin {
         registerCommand("nmarket", nationMarketCommand, nationMarketCommand);
         registerCommand("nationmarket", nationMarketCommand, nationMarketCommand);
         registerCommand("nm", nationMarketCommand, nationMarketCommand);
+
+        NationSetCapitalCommand setCapitalCommand = new NationSetCapitalCommand(this);
+        registerCommand("nsetcapital", setCapitalCommand, setCapitalCommand);
     }
 
     private void registerCommand(String name, CommandExecutor executor, TabCompleter completer) {

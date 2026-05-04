@@ -32,6 +32,7 @@ import ru.voidrp.gamesync.model.NationMarketPurchaseResponse;
 import ru.voidrp.gamesync.model.NationMemberStatsSyncRequest;
 import ru.voidrp.gamesync.model.NationStatsPayload;
 import ru.voidrp.gamesync.model.PlayerSkinResponse;
+import ru.voidrp.gamesync.model.PlayerStatCacheSyncRequest;
 import ru.voidrp.gamesync.model.ReferralResolveResponse;
 
 public final class BackendClient {
@@ -64,6 +65,11 @@ public final class BackendClient {
     public void upsertNationMemberSnapshots(NationMemberStatsSyncRequest payload) throws IOException, InterruptedException {
         String url = apiUrl("/nation-stats/internal/member-snapshots/upsert");
         postJson(url, gson.toJson(payload), "Nation member snapshot sync failed");
+    }
+
+    public void upsertPlayerStatsCache(PlayerStatCacheSyncRequest payload) throws IOException, InterruptedException {
+        String url = apiUrl("/nation-stats/internal/player-stats/upsert");
+        postJson(url, gson.toJson(payload), "Player stats cache upsert failed");
     }
 
     public void syncNationMembership(NationDefinition definition) throws IOException, InterruptedException {
@@ -177,6 +183,14 @@ public final class BackendClient {
         HttpResponse<String> response = postJsonForResponse(url, gson.toJson(payload), "Nation market cancel failed");
         return gson.fromJson(response.body(), NationMarketCancelResponse.class);
     }
+
+    public void setNationCapital(String slug, int x, int z, String world) throws IOException, InterruptedException {
+        String url = apiUrl("/game-sync/nations/" + encode(slug) + "/capital");
+        String json = gson.toJson(new NationCapitalRequest(x, z, world));
+        postJson(url, json, "Nation capital update failed");
+    }
+
+    private record NationCapitalRequest(int capital_x, int capital_z, String capital_world) {}
 
     private HttpResponse<String> get(String url) throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder(URI.create(url))

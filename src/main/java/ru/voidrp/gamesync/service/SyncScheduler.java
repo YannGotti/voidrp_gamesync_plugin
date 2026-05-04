@@ -38,6 +38,7 @@ public final class SyncScheduler {
             plugin,
             () -> {
                 nationSyncService.syncAll();
+                nationSyncService.syncAllOnlinePlayers();
                 if (config.isReconcileNationMetaAfterSync()) {
                     Bukkit.getScheduler().runTask(plugin, nationMetaService::reconcileOnlinePlayers);
                 }

@@ -2,19 +2,23 @@ package ru.voidrp.gamesync.service;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Material;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
 import org.bukkit.event.EventException;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.EnchantmentStorageMeta;
 import org.bukkit.plugin.Plugin;
 
 import ru.voidrp.gamesync.VoidRpGameSyncPlugin;
@@ -257,7 +261,7 @@ public final class EconomyShopGuiBridgeService {
 
         MarketTransactionPushRequest request = new MarketTransactionPushRequest(
                 player.getName(),
-                stack.getType().name(),
+                resolveMaterial(stack),
                 amount,
                 transactionType,
                 round2(baseTotal),
@@ -301,10 +305,43 @@ public final class EconomyShopGuiBridgeService {
         return null;
     }
 
+    private String resolveMaterial(ItemStack stack) {
+        if (stack == null) return "AIR";
+        if (stack.getType() != Material.ENCHANTED_BOOK) {
+            return stack.getType().name();
+        }
+        if (!(stack.getItemMeta() instanceof EnchantmentStorageMeta esm)) {
+            return Material.ENCHANTED_BOOK.name();
+        }
+        Map<Enchantment, Integer> stored = esm.getStoredEnchants();
+        if (stored.isEmpty()) {
+            return Material.ENCHANTED_BOOK.name();
+        }
+        // Single enchantment — most common case
+        if (stored.size() == 1) {
+            Map.Entry<Enchantment, Integer> entry = stored.entrySet().iterator().next();
+            String key = entry.getKey().getKey().getKey().toUpperCase(Locale.ROOT);
+            return "ENCHANTED_BOOK:" + key + ":" + entry.getValue();
+        }
+        // Multiple enchantments — sort for determinism
+        return stored.entrySet().stream()
+            .sorted(Comparator.comparing(e -> e.getKey().getKey().getKey()))
+            .map(e -> e.getKey().getKey().getKey().toUpperCase(Locale.ROOT) + ":" + e.getValue())
+            .collect(Collectors.joining("+", "ENCHANTED_BOOK:", ""));
+    }
+
     private String displayName(ItemStack stack) {
         if (stack == null) return "";
         if (stack.hasItemMeta() && stack.getItemMeta() != null && stack.getItemMeta().hasDisplayName()) {
             return stack.getItemMeta().getDisplayName();
+        }
+        if (stack.getType() == Material.ENCHANTED_BOOK
+                && stack.getItemMeta() instanceof EnchantmentStorageMeta esm
+                && !esm.getStoredEnchants().isEmpty()) {
+            return esm.getStoredEnchants().entrySet().stream()
+                .sorted(Comparator.comparing(e -> e.getKey().getKey().getKey()))
+                .map(e -> e.getKey().getKey().getKey() + " " + e.getValue())
+                .collect(Collectors.joining(", ", "Enchanted Book (", ")"));
         }
         return stack.getType().name();
     }

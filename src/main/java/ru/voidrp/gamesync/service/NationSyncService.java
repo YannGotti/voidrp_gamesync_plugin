@@ -25,8 +25,11 @@ import com.google.gson.JsonParser;
 import net.milkbowl.vault.economy.Economy;
 import ru.voidrp.gamesync.config.GameSyncConfig;
 import ru.voidrp.gamesync.config.NationRegistry;
+import ru.voidrp.gamesync.service.DynmapMarkerService;
+import ru.voidrp.gamesync.service.DynmapWorldGuardStyleService;
 import ru.voidrp.gamesync.model.NationDefinition;
 import ru.voidrp.gamesync.model.NationMemberStatsSyncRequest;
+import ru.voidrp.gamesync.model.PlayerStatCacheSyncRequest;
 import ru.voidrp.gamesync.model.PlayerStatSnapshot;
 import ru.voidrp.gamesync.store.PluginDataStore;
 
@@ -40,6 +43,9 @@ public final class NationSyncService {
     private final GameSyncConfig config;
     private final TerritoryPointsResolver territoryPointsResolver;
 
+    private final DynmapMarkerService dynmapMarkerService;
+    private final DynmapWorldGuardStyleService dynmapWgStyleService;
+
     public NationSyncService(
             JavaPlugin plugin,
             BackendClient backendClient,
@@ -47,7 +53,9 @@ public final class NationSyncService {
             PluginDataStore dataStore,
             Economy economy,
             GameSyncConfig config,
-            TerritoryPointsResolver territoryPointsResolver
+            TerritoryPointsResolver territoryPointsResolver,
+            DynmapMarkerService dynmapMarkerService,
+            DynmapWorldGuardStyleService dynmapWgStyleService
     ) {
         this.plugin = plugin;
         this.backendClient = backendClient;
@@ -56,12 +64,29 @@ public final class NationSyncService {
         this.economy = economy;
         this.config = config;
         this.territoryPointsResolver = territoryPointsResolver;
+        this.dynmapMarkerService = dynmapMarkerService;
+        this.dynmapWgStyleService = dynmapWgStyleService;
     }
 
     public void syncAll() {
         registry.refresh();
         for (NationDefinition nation : registry.all()) {
             syncNation(nation.slug());
+        }
+        updateDynmap();
+    }
+
+    private void updateDynmap() {
+        List<NationDefinition> all = registry.all();
+        try {
+            dynmapMarkerService.updateMarkers(all);
+        } catch (Exception e) {
+            plugin.getLogger().warning("[Dynmap] Marker update failed: " + e.getMessage());
+        }
+        try {
+            dynmapWgStyleService.updateStyles(all);
+        } catch (Exception e) {
+            plugin.getLogger().warning("[Dynmap] WorldGuard style update failed: " + e.getMessage());
         }
     }
 
@@ -105,6 +130,33 @@ public final class NationSyncService {
             return;
         }
         syncNation(definition.slug());
+    }
+
+    public void syncAllOnlinePlayers() {
+        List<PlayerStatSnapshot> snapshots = new ArrayList<>();
+
+        for (org.bukkit.entity.Player player : Bukkit.getOnlinePlayers()) {
+            String nickname = player.getName();
+            UUID uuid = player.getUniqueId();
+            int completedQuests = countCompletedQuests(uuid);
+            PlayerStatSnapshot snapshot = readLiveSnapshot(player, nickname, completedQuests);
+            if (snapshot != null) {
+                snapshots.add(snapshot);
+            }
+        }
+
+        if (snapshots.isEmpty()) {
+            return;
+        }
+
+        try {
+            backendClient.upsertPlayerStatsCache(new PlayerStatCacheSyncRequest(snapshots));
+            if (config.isVerboseSync()) {
+                plugin.getLogger().info("Player stats cache synced for " + snapshots.size() + " online players");
+            }
+        } catch (Exception e) {
+            plugin.getLogger().warning("Failed to sync player stats cache: " + e.getMessage());
+        }
     }
 
     public TerritoryPointsResolver.TerritoryDebugReport buildTerritoryDebugReport(String slug) {

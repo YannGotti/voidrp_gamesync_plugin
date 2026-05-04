@@ -15,7 +15,11 @@ public record NationDefinition(
     int territoryPoints,
     int bossKills,
     int eventsCompleted,
-    int prestigeBonus
+    int prestigeBonus,
+    String accentColor,
+    Integer capitalX,
+    Integer capitalZ,
+    String capitalWorld
 ) {
     public List<String> allMembersIncludingRoles() {
         Set<String> all = new LinkedHashSet<>();

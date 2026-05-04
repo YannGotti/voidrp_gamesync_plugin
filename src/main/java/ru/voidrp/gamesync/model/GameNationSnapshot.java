@@ -7,6 +7,10 @@ public final class GameNationSnapshot {
     public String nation_slug;
     public String title;
     public String tag;
+    public String accent_color;
+    public Integer capital_x;
+    public Integer capital_z;
+    public String capital_world;
     public String leader_minecraft_nickname;
     public List<String> officers;
     public List<String> members;
